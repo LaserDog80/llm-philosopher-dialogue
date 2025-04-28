@@ -1,0 +1,40 @@
+{
+  "defaults": {
+    "model_name": "deepseek-ai/DeepSeek-R1",
+    "temperature": 0.7,
+    "max_tokens": 400,
+    "top_p": 0.95,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "request_timeout": 60,
+    "prompt_file": "prompts/socrates.txt"
+  },
+  "socrates": {
+    "model_name": "deepseek-ai/DeepSeek-R1",
+    "temperature": 0.5,
+    "max_tokens": 400,
+    "top_p": 0.95,
+    "presence_penalty": 0.1,
+    "frequency_penalty": 0.1,
+    "request_timeout": 90,
+    "prompt_file": "prompts/socrates.txt"
+  },
+  "confucius": {
+    "model_name": "deepseek-ai/DeepSeek-R1",
+    "temperature": 0.8,
+    "max_tokens": 500,
+    "top_p": 0.9,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "request_timeout": 90,
+    "prompt_file": "prompts/confucius.txt"
+  },
+  "moderator": {
+    "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "temperature": 0.6,
+    "max_tokens": 300,
+    "top_p": 0.85,
+    "request_timeout": 30,
+    "prompt_file": "prompts/moderator.txt"
+  }
+}

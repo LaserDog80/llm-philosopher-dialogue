@@ -1,0 +1,16 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore environment file containing secrets
+.env
+
+# Ignore log files (optional, but recommended if they get large)
+logs/
+
+# Ignore Streamlit secrets file if you create one locally (good practice)
+.streamlit/secrets.toml
+
+# Ignore general OS files (optional)
+.DS_Store
+Thumbs.db
