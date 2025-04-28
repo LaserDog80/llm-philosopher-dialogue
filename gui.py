@@ -5,13 +5,14 @@ import json
 
 def display_header():
     """Displays the main title of the application."""
-    st.title("Philosopher Dialogue (Streamlit Edition)")
+    st.title("Philosopher Dialogue")
 
 def get_model_info_from_config(config_path="llm_config.json"):
     """Loads model names from config file for display."""
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
+        # Provide default 'Unknown' if a persona or model_name is missing
         return {
             'Socrates': config.get('socrates', {}).get('model_name', 'Unknown'),
             'Confucius': config.get('confucius', {}).get('model_name', 'Unknown'),
@@ -58,24 +59,49 @@ def display_sidebar(model_info):
 
         st.divider()
 
+        # --- Add the new checkbox for Moderator Context ---
+        st.checkbox(
+            "Show Moderator Context",
+            key='show_moderator_cb', # Unique key for this checkbox
+            value=st.session_state.get('show_moderator_cb', True) # Default to True (checked)
+        )
+        # ----------------------------------------------------
+
         # --- Checkbox for Monologue ---
         st.checkbox(
             "Show Internal Monologue",
             key='show_monologue_cb',
-            value=st.session_state.get('show_monologue_cb', False)
+            value=st.session_state.get('show_monologue_cb', False) # Default to False (unchecked)
         )
         # -----------------------------
 
 
 def display_conversation(messages):
-    """Displays the chat messages (main content only)."""
-    # (Identical to previous version)
+    """Displays the chat messages, conditionally hiding moderator context."""
+    # Get the current state of the checkbox
+    show_moderator = st.session_state.get('show_moderator_cb', True)
+
     for message in messages:
         role = message.get("role", "system")
+        content = message.get('content', '')
+
+        # --- Logic to conditionally skip moderator messages ---
+        # Check if role is system AND content starts with "MODERATOR CONTEXT"
+        is_moderator_context = role.lower() == 'system' and content.strip().startswith("MODERATOR CONTEXT")
+
+        if is_moderator_context and not show_moderator:
+            continue # Skip the rest of the loop for this message (don't display it)
+        # ----------------------------------------------------
+
+        # Determine display role (user or assistant)
         display_role = "user" if role.lower() == "user" else "assistant"
+
+        # Display the chat bubble
         with st.chat_message(display_role, avatar=("👤" if display_role=="user" else "🤖")):
-             prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() != 'system' else ""
-             st.markdown(f"{prefix}{message.get('content', '')}")
+             # Add speaker prefix only for actual philosopher responses (not user or system)
+             prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() not in ['system', 'user'] else ""
+             # Display the content
+             st.markdown(f"{prefix}{content}")
 
 
 def display_status(status_text):
