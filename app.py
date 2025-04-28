@@ -50,7 +50,17 @@ def write_log(message_dict):
         try:
             role = message_dict.get('role', 'system').upper()
             content = message_dict.get('content', '')
-            st.session_state.log_file_handle.write(f"{role}: {content}\n")
+            # Only write speaker name for non-system messages in log for clarity
+            prefix = f"{role}: " if role not in ['SYSTEM', 'USER'] else f"{role}: " # Keep USER: prefix
+            if role == 'SYSTEM' and content.startswith("MODERATOR CONTEXT"):
+                 # Write moderator context without repeating SYSTEM prefix potentially
+                 log_line = f"{content}\n"
+            elif role == 'USER':
+                 log_line = f"USER: {content}\n"
+            else:
+                 log_line = f"{role}: {content}\n"
+
+            st.session_state.log_file_handle.write(log_line)
             st.session_state.log_file_handle.write("----------------------------------------\n")
             st.session_state.log_file_handle.flush()
         except Exception as e:
@@ -77,20 +87,25 @@ if 'messages' not in st.session_state: st.session_state.messages = []
 if 'director_instance' not in st.session_state:
     try: st.session_state.director_instance = Director()
     except ImportError as e: st.error(f"Failed Director init: {e}"); st.stop()
+    except Exception as e: st.error(f"Error initializing Director: {e}"); st.stop() # Catch other init errors
 if 'current_status' not in st.session_state: st.session_state.current_status = "Ready."
 if 'log_file_handle' not in st.session_state: st.session_state.log_file_handle = None
 if 'show_monologue_cb' not in st.session_state: st.session_state.show_monologue_cb = False
-# Initialize state for new controls (use defaults from gui.py if not set)
+# --- Add initialization for the new moderator checkbox state ---
+if 'show_moderator_cb' not in st.session_state: st.session_state.show_moderator_cb = True # Default to show
+# -------------------------------------------------------------
 if 'starting_philosopher' not in st.session_state: st.session_state.starting_philosopher = 'Socrates'
 if 'num_rounds' not in st.session_state: st.session_state.num_rounds = DEFAULT_NUM_ROUNDS
 
 
 # --- Render UI ---
+# Ensure model_info is loaded before sidebar is displayed
 model_info = gui.get_model_info_from_config()
-# Sidebar now renders the new controls
+# Sidebar now renders the new controls using session state values
 gui.display_sidebar(model_info)
 gui.display_header()
-gui.display_conversation(st.session_state.messages) # Display chat history
+# Display chat history using the updated display_conversation function
+gui.display_conversation(st.session_state.messages)
 
 # --- Display Internal Monologue (Conditionally) ---
 if st.session_state.get('show_monologue_cb', False):
@@ -114,30 +129,45 @@ if prompt:
     logging.info(f"User input received: {prompt}")
     st.session_state.current_status = "Processing..."
 
+    # Clear previous messages for a new conversation
+    st.session_state.messages = []
+    # Close any potentially open log file from a previous run before starting new
+    close_log()
+
     # Get config from session state (set by widgets in gui.py)
     num_rounds_selected = st.session_state.get('num_rounds', DEFAULT_NUM_ROUNDS)
     starting_philosopher_selected = st.session_state.get('starting_philosopher', 'Socrates')
 
     # Initialize log file (pass selected rounds for logging)
-    if st.session_state.log_file_handle is None:
-        if not initialize_log(num_rounds_selected):
-            st.session_state.current_status = "Log initialization failed. Cannot proceed."
-            st.rerun()
+    if not initialize_log(num_rounds_selected):
+        st.session_state.current_status = "Log initialization failed. Cannot proceed."
+        st.rerun() # Stop processing if log fails
 
-    # Store user message
+    # Store user message as the first message of the new conversation
     user_message = {"role": "user", "content": prompt, "monologue": None}
     st.session_state.messages.append(user_message)
-    write_log(user_message)
+    write_log(user_message) # Write user input to the new log
 
-    # --- Call the Director ---
+    # Rerun to display the user's input immediately
+    st.rerun()
+
+
+# --- Run Conversation if needed (check if messages only contains user input) ---
+# This block runs *after* the rerun caused by user input submission
+if len(st.session_state.messages) == 1 and st.session_state.messages[0]['role'] == 'user':
+    # Retrieve the prompt and config again from session state
+    initial_prompt = st.session_state.messages[0]['content']
+    num_rounds_selected = st.session_state.get('num_rounds', DEFAULT_NUM_ROUNDS)
+    starting_philosopher_selected = st.session_state.get('starting_philosopher', 'Socrates')
     director = st.session_state.director_instance
+
     if director:
         try:
             with st.spinner("Philosophers and Moderator are conferring..."):
                  logging.info(f"Calling Director with {num_rounds_selected} rounds, starting with {starting_philosopher_selected}.")
                  # Pass selected options to the director
                  generated_messages, final_status, success = director.run_conversation_streamlit(
-                     initial_input=prompt,
+                     initial_input=initial_prompt,
                      num_rounds=num_rounds_selected,
                      starting_philosopher=starting_philosopher_selected # Pass the selected starter
                  )
@@ -145,6 +175,7 @@ if prompt:
 
             # Process results
             st.session_state.current_status = final_status
+            # Extend messages only after the initial user message
             st.session_state.messages.extend(generated_messages)
 
             # Log generated messages
@@ -152,28 +183,26 @@ if prompt:
 
             if success: st.toast(f"Conversation completed.", icon="✅")
             else: st.toast(f"Conversation ended: {final_status}", icon="⚠️")
-            close_log()
-            st.rerun() # Update display
+
+            close_log() # Close log after successful or failed run
+            st.rerun() # Update display with generated messages
 
         except Exception as e:
-            error_msg = f"An unexpected error occurred: {e}"
+            error_msg = f"An unexpected error occurred during conversation: {e}"
             st.error(error_msg); logging.exception(error_msg)
-            st.session_state.current_status = "Critical error."
-            close_log()
+            st.session_state.current_status = "Critical error during conversation."
+            close_log() # Ensure log is closed on error
     else:
         st.error("Director instance not available."); logging.error("Director instance None.")
         st.session_state.current_status = "Error: Director not loaded."
-
+        close_log() # Close log if director fails
 
 # --- Clear History Button ---
 st.divider()
 if st.button("Clear Conversation History"):
     st.session_state.messages = []
     st.session_state.current_status = "Ready."
-    # Keep UI selections or reset them? Let's keep them for now.
-    # st.session_state.num_rounds = DEFAULT_NUM_ROUNDS
-    # st.session_state.starting_philosopher = 'Socrates'
-    # st.session_state.show_monologue_cb = False
+    # Close log if clearing history
     close_log()
     logging.info("Conversation history cleared.")
     st.rerun()
