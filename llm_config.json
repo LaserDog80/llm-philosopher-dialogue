@@ -12,7 +12,7 @@
   "socrates": {
     "model_name": "deepseek-ai/DeepSeek-R1",
     "temperature": 0.5,
-    "max_tokens": 400,
+    "max_tokens": 75,
     "top_p": 0.95,
     "presence_penalty": 0.1,
     "frequency_penalty": 0.1,
@@ -21,8 +21,8 @@
   },
   "confucius": {
     "model_name": "deepseek-ai/DeepSeek-R1",
-    "temperature": 0.8,
-    "max_tokens": 500,
+    "temperature": 0.6,
+    "max_tokens": 85,
     "top_p": 0.9,
     "presence_penalty": 0.0,
     "frequency_penalty": 0.0,
@@ -32,7 +32,7 @@
   "moderator": {
     "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
     "temperature": 0.6,
-    "max_tokens": 300,
+    "max_tokens": 50,
     "top_p": 0.85,
     "request_timeout": 30,
     "prompt_file": "prompts/moderator.txt"

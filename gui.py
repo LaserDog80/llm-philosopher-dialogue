@@ -2,10 +2,14 @@
 
 import streamlit as st
 import json
+import logging # Added for potential error logging
+
+# Configure logging for the GUI module
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - GUI - %(levelname)s - %(message)s')
 
 def display_header():
     """Displays the main title of the application."""
-    st.title("Philosopher Dialogue")
+    st.title("Philosopher Dialogue (Streamlit Edition)")
 
 def get_model_info_from_config(config_path="llm_config.json"):
     """Loads model names from config file for display."""
@@ -19,10 +23,20 @@ def get_model_info_from_config(config_path="llm_config.json"):
             'Moderator': config.get('moderator', {}).get('model_name', 'Unknown'),
         }
     except FileNotFoundError:
-        st.warning(f"Config file not found at {config_path}. Cannot display model info.")
+        # Use st.warning for non-critical config issues
+        warning_msg = f"Config file not found at {config_path}. Cannot display model info."
+        st.warning(warning_msg)
+        logging.warning(warning_msg)
+        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
+    except json.JSONDecodeError as e:
+        error_msg = f"Error decoding JSON from {config_path}: {e}"
+        st.error(error_msg)
+        logging.error(error_msg)
         return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
     except Exception as e:
-        st.error(f"Error loading model info from config: {e}")
+        error_msg = f"Error loading model info from config {config_path}: {e}"
+        st.error(error_msg)
+        logging.error(error_msg, exc_info=True) # Log full traceback for unexpected errors
         return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
 
 
@@ -31,17 +45,17 @@ def display_sidebar(model_info):
     with st.sidebar:
         st.header("Configuration")
         st.caption("Model Instances:")
+        # Safely get model info, defaulting to 'Unknown'
         st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
         st.markdown(f"**Confucius:** `{model_info.get('Confucius', 'Unknown')}`")
         st.markdown(f"**Moderator:** `{model_info.get('Moderator', 'Unknown')}`")
 
         st.divider()
 
-        # --- Add Controls for Rounds and Starting Philosopher ---
         st.radio(
             "Starting Philosopher:",
             ('Socrates', 'Confucius'),
-            key='starting_philosopher', # Key to access value in session state
+            key='starting_philosopher',
             horizontal=True,
             index=0 # Default to Socrates
         )
@@ -49,62 +63,71 @@ def display_sidebar(model_info):
         st.number_input(
             "Number of Rounds:",
             min_value=1,
-            max_value=10, # Set a reasonable max
-            value=st.session_state.get('num_rounds', 3), # Default value, get from state if already set
+            max_value=10,
+            value=st.session_state.get('num_rounds', 3),
             step=1,
-            key='num_rounds', # Key to access value in session state
-            help="One round includes one response from each philosopher (S->M->C or C->M->S)."
+            key='num_rounds',
+            help="One round includes one response from each philosopher."
         )
-        # -------------------------------------------------------
 
         st.divider()
+        st.caption("Display Options:")
 
-        # --- Add the new checkbox for Moderator Context ---
+        # --- Add the Bypass Moderator checkbox ---
+        st.checkbox(
+            "Bypass Moderator (Direct Dialogue)",
+            key='bypass_moderator_cb', # Unique key
+            value=st.session_state.get('bypass_moderator_cb', False), # Default to False (use moderator)
+            help="If checked, philosophers respond directly without moderator summaries/guidance."
+        )
+        # ------------------------------------------
+
         st.checkbox(
             "Show Moderator Context",
-            key='show_moderator_cb', # Unique key for this checkbox
-            value=st.session_state.get('show_moderator_cb', True) # Default to True (checked)
+            key='show_moderator_cb',
+            value=st.session_state.get('show_moderator_cb', True), # Default to True (checked)
+            help="Show/hide the Moderator's SUMMARY/GUIDANCE blocks in the chat."
         )
-        # ----------------------------------------------------
 
-        # --- Checkbox for Monologue ---
         st.checkbox(
             "Show Internal Monologue",
             key='show_monologue_cb',
-            value=st.session_state.get('show_monologue_cb', False) # Default to False (unchecked)
+            value=st.session_state.get('show_monologue_cb', False), # Default to False (unchecked)
+            help="Show/hide the <think> blocks extracted from LLM responses."
         )
-        # -----------------------------
 
 
 def display_conversation(messages):
     """Displays the chat messages, conditionally hiding moderator context."""
-    # Get the current state of the checkbox
     show_moderator = st.session_state.get('show_moderator_cb', True)
+
+    if not messages:
+        st.info("Start the conversation by entering a question below.")
+        return
 
     for message in messages:
         role = message.get("role", "system")
         content = message.get('content', '')
 
         # --- Logic to conditionally skip moderator messages ---
-        # Check if role is system AND content starts with "MODERATOR CONTEXT"
-        is_moderator_context = role.lower() == 'system' and content.strip().startswith("MODERATOR CONTEXT")
-
+        is_moderator_context = role.lower() == 'system' and content.strip().startswith(("MODERATOR CONTEXT", "MODERATOR EVALUATION"))
         if is_moderator_context and not show_moderator:
-            continue # Skip the rest of the loop for this message (don't display it)
+            continue # Skip displaying this message
         # ----------------------------------------------------
 
-        # Determine display role (user or assistant)
+        # Determine display role and avatar
         display_role = "user" if role.lower() == "user" else "assistant"
+        avatar = "👤" if display_role=="user" else "🤖" # Consider different avatar for moderator?
 
         # Display the chat bubble
-        with st.chat_message(display_role, avatar=("👤" if display_role=="user" else "🤖")):
-             # Add speaker prefix only for actual philosopher responses (not user or system)
+        with st.chat_message(display_role, avatar=avatar):
+             # Add speaker prefix only for actual philosopher responses
+             # System messages (like errors or moderator context) won't get a prefix here
              prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() not in ['system', 'user'] else ""
-             # Display the content
              st.markdown(f"{prefix}{content}")
 
 
 def display_status(status_text):
-    """Displays the current application status."""
-    # (Identical to previous version)
-    st.caption(f"Status: {status_text}")
+    """Displays the current application status, handling None."""
+    status_display = status_text if status_text is not None else "Status unavailable."
+    st.caption(f"Status: {status_display}")
