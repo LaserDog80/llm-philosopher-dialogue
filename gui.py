@@ -17,13 +17,13 @@ def get_model_info_from_config(config_path="llm_config.json"):
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         # Provide default 'Unknown' if a persona or model_name is missing
+        # Note: Model names are still useful even if prompts are dynamic
         return {
             'Socrates': config.get('socrates', {}).get('model_name', 'Unknown'),
             'Confucius': config.get('confucius', {}).get('model_name', 'Unknown'),
             'Moderator': config.get('moderator', {}).get('model_name', 'Unknown'),
         }
     except FileNotFoundError:
-        # Use st.warning for non-critical config issues
         warning_msg = f"Config file not found at {config_path}. Cannot display model info."
         st.warning(warning_msg)
         logging.warning(warning_msg)
@@ -36,7 +36,7 @@ def get_model_info_from_config(config_path="llm_config.json"):
     except Exception as e:
         error_msg = f"Error loading model info from config {config_path}: {e}"
         st.error(error_msg)
-        logging.error(error_msg, exc_info=True) # Log full traceback for unexpected errors
+        logging.error(error_msg, exc_info=True) # Log full traceback
         return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
 
 
@@ -44,8 +44,22 @@ def display_sidebar(model_info):
     """Displays information and controls in the sidebar."""
     with st.sidebar:
         st.header("Configuration")
+
+        # --- Mode Selection ---
+        st.radio(
+            "Conversation Mode:",
+            # Use lowercase, underscore for keys used in filenames
+            options=['Philosophy', 'Bio'],
+            # Map display names to internal keys
+            format_func=lambda x: "Philosophical Mode" if x == 'Philosophy' else "Biographical Mode",
+            key='conversation_mode', # Unique key for session state
+            index=0, # Default to Philosophical
+            horizontal=True,
+            help="Select the conversation topic focus."
+        )
+        # --- End Mode Selection ---
+
         st.caption("Model Instances:")
-        # Safely get model info, defaulting to 'Unknown'
         st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
         st.markdown(f"**Confucius:** `{model_info.get('Confucius', 'Unknown')}`")
         st.markdown(f"**Moderator:** `{model_info.get('Moderator', 'Unknown')}`")
@@ -73,26 +87,24 @@ def display_sidebar(model_info):
         st.divider()
         st.caption("Display Options:")
 
-        # --- Add the Bypass Moderator checkbox ---
         st.checkbox(
             "Bypass Moderator (Direct Dialogue)",
-            key='bypass_moderator_cb', # Unique key
-            value=st.session_state.get('bypass_moderator_cb', False), # Default to False (use moderator)
+            key='bypass_moderator_cb',
+            value=st.session_state.get('bypass_moderator_cb', False),
             help="If checked, philosophers respond directly without moderator summaries/guidance."
         )
-        # ------------------------------------------
 
         st.checkbox(
             "Show Moderator Context",
             key='show_moderator_cb',
-            value=st.session_state.get('show_moderator_cb', True), # Default to True (checked)
+            value=st.session_state.get('show_moderator_cb', True),
             help="Show/hide the Moderator's SUMMARY/GUIDANCE blocks in the chat."
         )
 
         st.checkbox(
             "Show Internal Monologue",
             key='show_monologue_cb',
-            value=st.session_state.get('show_monologue_cb', False), # Default to False (unchecked)
+            value=st.session_state.get('show_monologue_cb', False),
             help="Show/hide the <think> blocks extracted from LLM responses."
         )
 
@@ -109,20 +121,14 @@ def display_conversation(messages):
         role = message.get("role", "system")
         content = message.get('content', '')
 
-        # --- Logic to conditionally skip moderator messages ---
         is_moderator_context = role.lower() == 'system' and content.strip().startswith(("MODERATOR CONTEXT", "MODERATOR EVALUATION"))
         if is_moderator_context and not show_moderator:
-            continue # Skip displaying this message
-        # ----------------------------------------------------
+            continue
 
-        # Determine display role and avatar
         display_role = "user" if role.lower() == "user" else "assistant"
-        avatar = "👤" if display_role=="user" else "🤖" # Consider different avatar for moderator?
+        avatar = "👤" if display_role=="user" else "🤖"
 
-        # Display the chat bubble
         with st.chat_message(display_role, avatar=avatar):
-             # Add speaker prefix only for actual philosopher responses
-             # System messages (like errors or moderator context) won't get a prefix here
              prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() not in ['system', 'user'] else ""
              st.markdown(f"{prefix}{content}")
 

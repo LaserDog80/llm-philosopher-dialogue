@@ -1,36 +1,67 @@
+# Filename: socrates.py
+
 import os
-import langchain
+import logging
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from llm_loader import load_llm_config_for_persona # Assuming llm_loader.py is in the same directory
+from langchain_openai import ChatOpenAI # Direct import might be needed if type hinting chain output
+from llm_loader import load_llm_config_for_persona
+from typing import Optional, Any # For type hinting
 
-# --- Define Persona ---
+logger = logging.getLogger(__name__)
 persona_name = "socrates"
 
-# --- Load LLM and System Prompt using the loader ---
-# This runs when the module is imported
-llm, system_prompt = load_llm_config_for_persona(persona_name)
+# --- Chain Creation Function ---
+def get_chain(mode: str = 'philosophy') -> Optional[Any]:
+    """
+    Loads the LLM configuration and prompt for the specified mode,
+    then creates and returns a Langchain chain for Socrates.
 
-# --- Global Chain Variable ---
-# Initialize chain as None in case loading fails
-socrates_chain = None
+    Args:
+        mode (str): The conversation mode ('philosophy', 'bio', etc.).
 
-if llm and system_prompt:
-    # Prompt Template: Uses the system prompt loaded from config
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("user", "{input}")
-    ])
+    Returns:
+        A Langchain chain instance or None if creation fails.
+    """
+    logger.info(f"Creating Socrates chain for mode: {mode}")
+    llm, system_prompt = load_llm_config_for_persona(persona_name, mode=mode)
 
-    output_parser = StrOutputParser()
+    if llm and system_prompt:
+        try:
+            # Define prompt template using the loaded system prompt
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("user", "{input}")
+            ])
+            output_parser = StrOutputParser()
+            chain = prompt | llm | output_parser
+            logger.info(f"Socrates chain created successfully for mode '{mode}'.")
+            return chain
+        except Exception as e:
+            logger.error(f"Error creating Socrates chain for mode '{mode}': {e}", exc_info=True)
+            return None
+    else:
+        logger.error(f"Failed to initialize Socrates chain for mode '{mode}' due to missing LLM or system prompt.")
+        return None
 
-    # Create the chain and make it accessible when imported
-    socrates_chain = prompt | llm | output_parser
-    print(f"-> Socrates chain created successfully for '{persona_name}'.")
-else:
-    # This message will appear when importing if loading failed
-    print(f"Error: Failed to initialize Socrates chain for '{persona_name}'. Check config and loader.")
-    # The socrates_chain variable remains None
+# --- No automatic chain creation on import ---
+# The chain is now created on demand by calling get_chain(mode)
 
-# --- No __main__ block needed ---
-# This script now only defines the chain when imported.
+# Example Test (Optional)
+if __name__ == "__main__":
+    print("Testing Socrates chain creation...")
+    philosophy_chain = get_chain(mode='philosophy')
+    if philosophy_chain:
+        print("Philosophy chain created.")
+        # test_p = philosophy_chain.invoke({"input": "What is virtue?"})
+        # print(f"Test response (Philosophy): {test_p}")
+    else:
+        print("Philosophy chain creation FAILED.")
+
+    bio_chain = get_chain(mode='bio')
+    if bio_chain:
+        print("Bio chain created.")
+        # test_b = bio_chain.invoke({"input": "Tell me about your trial."})
+        # print(f"Test response (Bio): {test_b}")
+    else:
+        print("Bio chain creation FAILED.")
