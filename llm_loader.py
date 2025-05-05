@@ -5,6 +5,7 @@ import json
 import logging
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+import streamlit as st # Import streamlit to access session state
 
 # Configure logging for the loader module
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - LOADER - %(levelname)s - %(message)s')
@@ -21,69 +22,123 @@ DEFAULT_FREQUENCY_PENALTY = 0.0
 DEFAULT_PROMPT_DIR = "prompts"
 DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant." # Fallback if specific prompt file is missing
 
+# --- Function to load ONLY the default prompt text ---
+# Use Streamlit caching for default prompt text
+@st.cache_data(ttl=3600) # Cache for 1 hour
+def load_default_prompt_text(persona_name: str, mode: str) -> str | None:
+    """
+    Loads and returns the text content of the default prompt file for a given
+    persona and mode. Returns None if the file cannot be read. Caches result.
+    """
+    logger.info(f"Attempting to load default prompt text for '{persona_name}' mode '{mode}'")
+    # Construct prompt filename dynamically
+    mode_suffix = mode.lower()
+    prompt_filename = f"{persona_name}_{mode_suffix}.txt"
+    # Assume prompts are in a 'prompts' subdirectory relative to this script's dir
+    # Adjust if your prompts dir is elsewhere relative to where app is run
+    try:
+        # Try finding prompts relative to current working directory first
+        cwd = os.getcwd()
+        prompt_dir_path = os.path.join(cwd, DEFAULT_PROMPT_DIR)
+        prompt_path = os.path.join(prompt_dir_path, prompt_filename)
+        logger.debug(f"Checking for prompt at: {prompt_path}")
+        if not os.path.exists(prompt_path):
+             # Fallback: Try finding prompts relative to the script's directory
+             script_dir = os.path.dirname(__file__) or '.'
+             prompt_dir_path = os.path.join(script_dir, DEFAULT_PROMPT_DIR)
+             prompt_path = os.path.join(prompt_dir_path, prompt_filename)
+             logger.debug(f"Checking for prompt at fallback path: {prompt_path}")
+
+
+        with open(prompt_path, "r", encoding="utf-8") as pf:
+            system_prompt = pf.read().strip()
+        logger.info(f"Successfully loaded default prompt text for '{persona_name}' mode '{mode}' from {prompt_path}")
+        return system_prompt
+    except FileNotFoundError:
+        logger.error(f"Default prompt file not found for persona '{persona_name}' mode '{mode}' at expected paths.")
+        return None
+    except Exception as e:
+        logger.error(f"Error reading default prompt file {prompt_path}: {e}.")
+        return None
+
+# --- Modified function to load LLM config AND check for prompt overrides ---
+# Consider caching the LLM instance + config loading part
+# Use cache_resource for non-hashable objects like LLM clients
+# Key needs to include things that change the LLM object: persona_name, model params, API key info indirectly
+# Caching LLM might be complex if parameters change frequently or per-persona significantly.
+# For now, let's focus on caching prompts and config read.
+
+@st.cache_data(ttl=3600)
+def _load_llm_params(persona_name: str, config_path="llm_config.json") -> dict:
+    """Loads and caches parameters from JSON config."""
+    logger.info(f"Loading LLM params for {persona_name} from {config_path}")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f: config = json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading/parsing LLM config {config_path}: {e}")
+        return {} # Return empty dict on failure
+
+    persona_config = config.get(persona_name, {})
+    defaults = config.get("defaults", {})
+    merged = {**defaults, **persona_config}
+    return merged
 
 def load_llm_config_for_persona(persona_name: str, mode: str = 'philosophy', config_path="llm_config.json"):
     """
-    Loads configuration for a specific persona and mode, constructs the
-    prompt filename dynamically, initializes and returns a ChatOpenAI instance
-    and the system prompt text.
+    Loads LLM config, loads the DEFAULT system prompt text, checks session state
+    for an OVERRIDDEN prompt, and returns the LLM instance and the
+    effective (default or overridden) system prompt text.
 
     Args:
         persona_name (str): The name of the persona section (e.g., "socrates").
-        mode (str): The conversation mode (e.g., "philosophy", "bio"). Used to find the prompt file.
+        mode (str): The conversation mode (e.g., "philosophy", "bio").
         config_path (str): Path to the JSON configuration file.
 
     Returns:
-        tuple: (ChatOpenAI instance or None, system_prompt string or None)
+        tuple: (ChatOpenAI instance or None, effective_system_prompt string or None)
     """
-    load_dotenv() # Load .env file for API keys
+    # load_dotenv() # Called once in app.py now
 
     api_key = os.getenv("NEBIUS_API_KEY")
     base_url = os.getenv("NEBIUS_API_BASE")
 
     if not api_key or not base_url:
-        logger.error("NEBIUS_API_KEY and NEBIUS_API_BASE must be set in the .env file.")
+        logger.error("NEBIUS_API_KEY and NEBIUS_API_BASE must be set.")
         return None, None
 
-    # --- Load Parameters from JSON Config ---
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except FileNotFoundError:
-        logger.error(f"LLM config file not found at {config_path}. Cannot load persona settings.")
-        return None, None
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON from {config_path}: {e}")
+    # --- Load LLM Parameters using cached function ---
+    merged_params = _load_llm_params(persona_name, config_path)
+    if not merged_params: # Handle failure in loading params
         return None, None
 
-    persona_config = config.get(persona_name, {})
-    defaults = config.get("defaults", {})
-    # Note: We ignore "prompt_file" in config now, filename is constructed dynamically
-    merged = {**defaults, **persona_config}
+    # --- Load DEFAULT System Prompt Text (uses caching internally) ---
+    default_system_prompt = load_default_prompt_text(persona_name, mode)
+    if default_system_prompt is None:
+        logger.warning(f"Using fallback prompt for '{persona_name}' mode '{mode}' due to missing/unreadable default file.")
+        default_system_prompt = DEFAULT_FALLBACK_PROMPT
 
-    # --- Construct Prompt Filename Dynamically ---
-    # Use lowercase mode consistent with st.radio options mapping
-    mode_suffix = mode.lower() # e.g., 'philosophy', 'bio'
-    prompt_filename = f"{persona_name}_{mode_suffix}.txt"
-    # Assume prompts are in a 'prompts' subdirectory relative to the config file
-    prompt_dir = os.path.join(os.path.dirname(config_path) or '.', DEFAULT_PROMPT_DIR)
-    prompt_path = os.path.join(prompt_dir, prompt_filename)
+    # --- Check for User Override in Session State ---
+    effective_system_prompt = default_system_prompt # Start with the default
+    override_key = f"{persona_name}_{mode.lower()}"
+    # Initialize prompt_overrides in session state if it doesn't exist
+    # setdefault needed here in case Settings page hasn't run yet
+    st.session_state.setdefault('prompt_overrides', {})
 
-    system_prompt = None
-    try:
-        with open(prompt_path, "r", encoding="utf-8") as pf:
-            system_prompt = pf.read().strip()
-        logger.info(f"Successfully loaded prompt for '{persona_name}' in mode '{mode}' from {prompt_path}")
-    except FileNotFoundError:
-        logger.error(f"Prompt file not found for persona '{persona_name}' in mode '{mode}' at: {prompt_path}. Using fallback prompt.")
-        system_prompt = DEFAULT_FALLBACK_PROMPT
-    except Exception as e:
-        logger.error(f"Error reading prompt file {prompt_path}: {e}. Using fallback prompt.")
-        system_prompt = DEFAULT_FALLBACK_PROMPT
+    if override_key in st.session_state.prompt_overrides:
+        # Ensure override is not empty string, otherwise use default
+        override_text = st.session_state.prompt_overrides[override_key]
+        if isinstance(override_text, str) and override_text.strip():
+            effective_system_prompt = override_text
+            logger.info(f"Using OVERRIDDEN prompt for {override_key}")
+        else:
+            logger.info(f"Ignoring empty override, using DEFAULT prompt for {override_key}")
+            effective_system_prompt = default_system_prompt # Fallback to default if override is empty
+    else:
+        logger.info(f"Using DEFAULT prompt for {override_key}")
 
 
     # --- Determine Final LLM Parameters ---
-    final_params = merged
+    final_params = merged_params # Use loaded params
     model_name = final_params.get("model_name", DEFAULT_MODEL)
     temperature = final_params.get("temperature", DEFAULT_TEMPERATURE)
     max_tokens = final_params.get("max_tokens", DEFAULT_MAX_TOKENS)
@@ -94,48 +149,48 @@ def load_llm_config_for_persona(persona_name: str, mode: str = 'philosophy', con
 
     # --- Prepare LLM Arguments ---
     llm_kwargs = {
-        "model": model_name,
-        "api_key": api_key,
-        "base_url": base_url,
-        "request_timeout": request_timeout,
-        "temperature": temperature,
+        "model": model_name, "api_key": api_key, "base_url": base_url,
+        "request_timeout": request_timeout, "temperature": temperature,
     }
+    # Only add parameters if they are not None, to allow API defaults if preferred
     if max_tokens is not None: llm_kwargs["max_tokens"] = max_tokens
     if top_p is not None: llm_kwargs["top_p"] = top_p
-    # Add penalties only if they are explicitly set and not None/0? Check API behavior.
-    # Assuming OpenAI API defaults if not provided or 0.0
+    # Penalties usually default to 0.0, only add if explicitly non-zero
     if presence_penalty != 0.0: llm_kwargs["presence_penalty"] = presence_penalty
     if frequency_penalty != 0.0: llm_kwargs["frequency_penalty"] = frequency_penalty
 
     logger.info(f"LLM '{persona_name}' (mode: {mode}): Model='{model_name}', Temp={temperature}, MaxTokens={max_tokens}, Timeout={request_timeout}")
 
     # --- Initialize LLM ---
+    # TODO: Consider caching the LLM instance if beneficial (using st.cache_resource)
+    # Cache key would need to combine relevant parts of llm_kwargs
     try:
         llm = ChatOpenAI(**llm_kwargs)
-        return llm, system_prompt # Return LLM and the loaded prompt text
+        # Return LLM and the effective prompt (default or overridden)
+        return llm, effective_system_prompt
     except Exception as e:
         logger.error(f"Error initializing ChatOpenAI for {persona_name}: {e}", exc_info=True)
         logger.error("Check API key, base URL, model name, and parameters.")
         return None, None
 
-# Example usage (optional, for testing llm_loader.py directly)
+# --- Example Usage ---
+# (Keep __main__ block unchanged if needed for testing)
 if __name__ == "__main__":
-    print("Testing LLM Loader...")
-    # Test loading default mode (philosophy)
-    socrates_llm_p, socrates_prompt_p = load_llm_config_for_persona("socrates", mode='philosophy')
-    if socrates_llm_p:
-        print(f"\nSocrates (Philosophy) LLM OK. Prompt start: '{socrates_prompt_p[:60]}...'")
-    else: print("\nSocrates (Philosophy) LLM failed.")
+     # This block won't have Streamlit context (caching, session_state)
+     # It will test basic loading logic without overrides/caching active
+     print("Testing LLM Loader (without Streamlit session state)...")
+     # Test loading default mode (philosophy)
+     s_llm_p, s_prompt_p = load_llm_config_for_persona("socrates", mode='philosophy')
+     if s_llm_p: print(f"\nSocrates (Philosophy) LLM OK.")
+     else: print("\nSocrates (Philosophy) LLM failed.")
+     print(f"Prompt loaded: '{s_prompt_p[:80]}...'")
 
-    # Test loading bio mode
-    socrates_llm_b, socrates_prompt_b = load_llm_config_for_persona("socrates", mode='bio')
-    if socrates_llm_b:
-         print(f"\nSocrates (Bio) LLM OK. Prompt start: '{socrates_prompt_b[:60]}...'")
-    else: print("\nSocrates (Bio) LLM failed.")
+     # Test loading default text directly
+     print("\nTesting direct default prompt loading...")
+     default_s_bio = load_default_prompt_text("socrates", "bio")
+     if default_s_bio: print(f"Default Socrates Bio prompt fetched: '{default_s_bio[:80]}...'")
+     else: print("Fetching default Socrates Bio prompt FAILED.")
 
-    # Test fallback
-    print("\nTesting non-existent persona/mode fallback...")
-    _, fallback_prompt = load_llm_config_for_persona("no_such_persona", mode='philosophy')
-    print(f"Fallback prompt received: '{fallback_prompt}'")
-    _, fallback_prompt_m = load_llm_config_for_persona("socrates", mode='no_such_mode')
-    print(f"Fallback prompt received for missing mode: '{fallback_prompt_m}'")
+     default_m_phil = load_default_prompt_text("moderator", "philosophy")
+     if default_m_phil: print(f"Default Moderator Phil prompt fetched: '{default_m_phil[:80]}...'")
+     else: print("Fetching default Moderator Phil prompt FAILED.")

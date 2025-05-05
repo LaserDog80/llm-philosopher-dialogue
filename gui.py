@@ -78,7 +78,6 @@ def display_sidebar(model_info):
             "Number of Rounds:",
             min_value=1,
             max_value=10,
-            value=st.session_state.get('num_rounds', 3),
             step=1,
             key='num_rounds',
             help="One round includes one response from each philosopher."
@@ -97,7 +96,7 @@ def display_sidebar(model_info):
         st.checkbox(
             "Show Moderator Context",
             key='show_moderator_cb',
-            value=st.session_state.get('show_moderator_cb', True),
+            value=st.session_state.get('show_moderator_cb', True), # Default to True now
             help="Show/hide the Moderator's SUMMARY/GUIDANCE blocks in the chat."
         )
 
@@ -121,19 +120,28 @@ def display_conversation(messages):
         role = message.get("role", "system")
         content = message.get('content', '')
 
-        is_moderator_context = role.lower() == 'system' and content.strip().startswith(("MODERATOR CONTEXT", "MODERATOR EVALUATION"))
-        if is_moderator_context and not show_moderator:
+        # --- Refined check for moderator system messages ---
+        # Check role first, then content prefix for efficiency
+        is_moderator_system_message = (role.lower() == 'system' and
+                                      isinstance(content, str) and
+                                      content.strip().startswith(("MODERATOR CONTEXT", "MODERATOR EVALUATION")))
+
+        if is_moderator_system_message and not show_moderator:
             continue
+        # --- End Refined Check ---
 
         display_role = "user" if role.lower() == "user" else "assistant"
         avatar = "👤" if display_role=="user" else "🤖"
 
         with st.chat_message(display_role, avatar=avatar):
+             # Add bold prefix only for actual philosopher roles
              prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() not in ['system', 'user'] else ""
-             st.markdown(f"{prefix}{content}")
+             # Ensure content is string before displaying
+             display_content = str(content) if content is not None else ""
+             st.markdown(f"{prefix}{display_content}")
 
-
-def display_status(status_text):
-    """Displays the current application status, handling None."""
-    status_display = status_text if status_text is not None else "Status unavailable."
-    st.caption(f"Status: {status_display}")
+# --- REMOVED display_status function ---
+# def display_status(status_text):
+#    """Displays the current application status, handling None."""
+#    status_display = status_text if status_text is not None else "Status unavailable."
+#    st.caption(f"Status: {status_display}")
