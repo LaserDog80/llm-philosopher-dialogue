@@ -96,7 +96,7 @@ def display_sidebar(model_info):
         st.checkbox(
             "Show Moderator Context",
             key='show_moderator_cb',
-            value=st.session_state.get('show_moderator_cb', True), # Default to True now
+            value=st.session_state.get('show_moderator_cb', False), 
             help="Show/hide the Moderator's SUMMARY/GUIDANCE blocks in the chat."
         )
 

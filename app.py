@@ -144,7 +144,7 @@ def close_log():
 default_app_values = {
     'messages': [], 'director_instance': None, 'current_status': "Ready.",
     'log_content': None, 'current_log_filename': None, 'local_log_file_handle': None,
-    'show_monologue_cb': False, 'show_moderator_cb': True, 'bypass_moderator_cb': False,
+    'show_monologue_cb': False, 'show_moderator_cb': False, 'bypass_moderator_cb': False,
     'starting_philosopher': 'Socrates', 'num_rounds': DEFAULT_NUM_ROUNDS,
     'conversation_mode': DEFAULT_CONVERSATION_MODE, 'run_conversation_flag': False,
     'conversation_completed': False,
