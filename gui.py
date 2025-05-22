@@ -57,7 +57,19 @@ def display_sidebar(model_info):
             horizontal=True,
             help="Select the conversation topic focus."
         )
-        # --- End Mode Selection ---
+        st.divider()
+
+        # --- Moderator Control Mode ---
+        st.radio(
+            "Moderator Control:",
+            options=['AI Moderator', 'User as Moderator (Guidance)'],
+            format_func=lambda x: x, # Display names are fine
+            key='moderator_control_mode',
+            index=0, # Default to AI Moderator
+            horizontal=True,
+            help="Choose who provides guidance: AI or User. AI always provides summary."
+        )
+        # --- End Moderator Control Mode ---
 
         st.caption("Model Instances:")
         st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
@@ -90,13 +102,13 @@ def display_sidebar(model_info):
             "Bypass Moderator (Direct Dialogue)",
             key='bypass_moderator_cb',
             value=st.session_state.get('bypass_moderator_cb', False),
-            help="If checked, philosophers respond directly without moderator summaries/guidance."
+            help="If checked, philosophers respond directly without moderator summaries/guidance. Overrides 'Moderator Control' selection."
         )
 
         st.checkbox(
             "Show Moderator Context",
             key='show_moderator_cb',
-            value=st.session_state.get('show_moderator_cb', False), 
+            value=st.session_state.get('show_moderator_cb', False),
             help="Show/hide the Moderator's SUMMARY/GUIDANCE blocks in the chat."
         )
 
@@ -110,7 +122,9 @@ def display_sidebar(model_info):
 
 def display_conversation(messages):
     """Displays the chat messages, conditionally hiding moderator context."""
-    show_moderator = st.session_state.get('show_moderator_cb', True)
+    show_moderator_ctx = st.session_state.get('show_moderator_cb', True)
+    moderator_control_mode = st.session_state.get('moderator_control_mode', 'AI Moderator')
+    awaiting_user_guidance = st.session_state.get('awaiting_user_guidance', False)
 
     if not messages:
         st.info("Start the conversation by entering a question below.")
@@ -120,28 +134,46 @@ def display_conversation(messages):
         role = message.get("role", "system")
         content = message.get('content', '')
 
-        # --- Refined check for moderator system messages ---
-        # Check role first, then content prefix for efficiency
         is_moderator_system_message = (role.lower() == 'system' and
                                       isinstance(content, str) and
-                                      content.strip().startswith(("MODERATOR CONTEXT", "MODERATOR EVALUATION")))
+                                      (content.strip().startswith("MODERATOR CONTEXT") or
+                                       content.strip().startswith("USER GUIDANCE FOR")))
 
-        if is_moderator_system_message and not show_moderator:
+
+        if is_moderator_system_message and not show_moderator_ctx:
+            # If user has "Show Moderator Context" unchecked, hide all moderator-related system messages
             continue
-        # --- End Refined Check ---
+        
+        # Special handling for MODERATOR CONTEXT when user is providing guidance
+        if (is_moderator_system_message and
+            content.strip().startswith("MODERATOR CONTEXT") and
+            moderator_control_mode == 'User as Moderator (Guidance)' and
+            not awaiting_user_guidance and # Only modify if we are past the point of user input for this turn
+            "AI Guidance:" in content): # Check if AI guidance is part of the content
+            
+            # Reconstruct content to show only summary if user provided guidance for this segment
+            # This assumes the user guidance has already been applied for the *next* philosopher
+            # For now, let's keep the logic simple: if show_moderator_cb is on, show what's logged.
+            # The logged message itself will be different based on moderator_control_mode (see direction.py)
+            pass # No change to content here, rely on what was logged.
+
 
         display_role = "user" if role.lower() == "user" else "assistant"
         avatar = "👤" if display_role=="user" else "🤖"
+        if role.lower() == "system" and "guidance" in content.lower(): # Simple check for guidance messages
+             avatar = "🧑‍🏫" # Moderator/Guidance avatar
+        elif role.lower() not in ["user", "system"]: # Philosopher
+             avatar = "🧑‍🎨" # Generic philosopher avatar for now
+
 
         with st.chat_message(display_role, avatar=avatar):
-             # Add bold prefix only for actual philosopher roles
-             prefix = f"**{role}:**\n" if display_role == "assistant" and role.lower() not in ['system', 'user'] else ""
-             # Ensure content is string before displaying
+             # Add bold prefix only for actual philosopher roles or specific system roles
+             prefix = ""
+             if display_role == "assistant" and role.lower() not in ['system', 'user']: # Philosophers
+                 prefix = f"**{role}:**\n"
+             elif role.lower() == 'system' and (content.strip().startswith("MODERATOR CONTEXT") or content.strip().startswith("USER GUIDANCE FOR")):
+                 # No prefix for these system messages, content is self-descriptive
+                 pass
+             
              display_content = str(content) if content is not None else ""
              st.markdown(f"{prefix}{display_content}")
-
-# --- REMOVED display_status function ---
-# def display_status(status_text):
-#    """Displays the current application status, handling None."""
-#    status_display = status_text if status_text is not None else "Status unavailable."
-#    st.caption(f"Status: {status_display}")
