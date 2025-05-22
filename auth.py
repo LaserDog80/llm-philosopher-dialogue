@@ -102,7 +102,10 @@ def logout():
         'debug_chat_persona', 'debug_messages', 'debug_llm',
         'debug_system_prompt', 'current_debug_config_key',
         'settings_persona_select', 'settings_mode_select',
-        # Text area keys are dynamic but pattern might be identifiable if needed
+        # New keys for moderator control
+        'moderator_control_mode', 'awaiting_user_guidance',
+        'ai_summary_for_guidance_input', 'next_speaker_for_guidance',
+        'director_resume_state'
     ]
     # Also clear potentially dynamic keys like the prompt editor
     # Safer approach: iterate and remove known keys vs clearing all
