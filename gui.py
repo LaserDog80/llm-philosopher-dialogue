@@ -96,6 +96,16 @@ def display_sidebar(model_info):
         )
 
         st.divider()
+
+        st.radio(
+            "Output Style:",
+            ('Original Text', 'Translated Text'),
+            key='output_style',
+            horizontal=True,
+            index=0, # Default to Original
+            help="Choose to view the original dialogue or a more casual translation (applied after conversation finishes)."
+        )
+        
         st.caption("Display Options:")
 
         st.checkbox(
@@ -144,35 +154,27 @@ def display_conversation(messages):
             # If user has "Show Moderator Context" unchecked, hide all moderator-related system messages
             continue
         
-        # Special handling for MODERATOR CONTEXT when user is providing guidance
         if (is_moderator_system_message and
             content.strip().startswith("MODERATOR CONTEXT") and
             moderator_control_mode == 'User as Moderator (Guidance)' and
-            not awaiting_user_guidance and # Only modify if we are past the point of user input for this turn
-            "AI Guidance:" in content): # Check if AI guidance is part of the content
-            
-            # Reconstruct content to show only summary if user provided guidance for this segment
-            # This assumes the user guidance has already been applied for the *next* philosopher
-            # For now, let's keep the logic simple: if show_moderator_cb is on, show what's logged.
-            # The logged message itself will be different based on moderator_control_mode (see direction.py)
-            pass # No change to content here, rely on what was logged.
+            not awaiting_user_guidance and
+            "AI Guidance:" in content):
+            pass
 
 
         display_role = "user" if role.lower() == "user" else "assistant"
         avatar = "👤" if display_role=="user" else "🤖"
-        if role.lower() == "system" and "guidance" in content.lower(): # Simple check for guidance messages
-             avatar = "🧑‍🏫" # Moderator/Guidance avatar
-        elif role.lower() not in ["user", "system"]: # Philosopher
-             avatar = "🧑‍🎨" # Generic philosopher avatar for now
+        if role.lower() == "system" and "guidance" in content.lower():
+             avatar = "🧑‍🏫"
+        elif role.lower() not in ["user", "system"]:
+             avatar = "🧑‍🎨"
 
 
         with st.chat_message(display_role, avatar=avatar):
-             # Add bold prefix only for actual philosopher roles or specific system roles
              prefix = ""
-             if display_role == "assistant" and role.lower() not in ['system', 'user']: # Philosophers
+             if display_role == "assistant" and role.lower() not in ['system', 'user']:
                  prefix = f"**{role}:**\n"
              elif role.lower() == 'system' and (content.strip().startswith("MODERATOR CONTEXT") or content.strip().startswith("USER GUIDANCE FOR")):
-                 # No prefix for these system messages, content is self-descriptive
                  pass
              
              display_content = str(content) if content is not None else ""
