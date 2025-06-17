@@ -24,8 +24,17 @@ logger = logging.getLogger(__name__)
 THINK_BLOCK_REGEX = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
 
 class Director:
-    def __init__(self):
-        logger.info("Director initialized (chains will be loaded per conversation mode/resume).")
+    # MODIFICATION: Added status_callback to the constructor
+    def __init__(self, status_callback=None):
+        self.status_callback = status_callback
+        logger.info("Director initialized.")
+        if self.status_callback:
+            self.status_callback("Director initialized.")
+
+    def _update_status(self, message: str):
+        """Safely call the status callback if it exists."""
+        if self.status_callback:
+            self.status_callback(message)
 
     def _extract_and_clean(self, raw_response: Optional[str]) -> Tuple[str, Optional[str]]:
         if not raw_response: return "", None
@@ -40,16 +49,35 @@ class Director:
         if chain is None: logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None."); return None, None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                logger.info(f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES}). Input keys: {list(input_dict.keys())}")
+                # MODIFICATION: Report status before making the request
+                status_msg = f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES})..."
+                logger.info(status_msg)
+                self._update_status(status_msg)
+
                 start_time = time.time(); raw_response_obj = chain.invoke(input_dict); raw_response = str(raw_response_obj) if raw_response_obj is not None else None; end_time = time.time()
-                logger.info(f"Round {round_num}: {actor_name} responded in {end_time - start_time:.2f}s.")
+                
+                # MODIFICATION: Report status after getting a response
+                response_time = end_time - start_time
+                status_msg_done = f"Round {round_num}: {actor_name} responded in {response_time:.2f}s."
+                logger.info(status_msg_done)
+                self._update_status(status_msg_done)
+
                 if raw_response is not None and raw_response.strip(): clean_response, monologue = self._extract_and_clean(raw_response); return clean_response, monologue
                 elif raw_response == "": logger.info(f"Round {round_num}: {actor_name} returned an empty string."); return "", None
                 else: raise ValueError(f"Invalid or empty raw response from {actor_name}: '{raw_response}'")
             except Exception as e:
                 logger.error(f"Round {round_num}: {actor_name}'s turn failed (Attempt {attempt}): {e}", exc_info=True)
-                if attempt == MAX_RETRIES: logger.error(f"Round {round_num}: {actor_name} failed permanently."); return None, None
-                logger.info(f"Round {round_num}: Retrying {actor_name} in {RETRY_DELAY}s..."); time.sleep(RETRY_DELAY)
+                if attempt == MAX_RETRIES:
+                    self._update_status(f"Error: {actor_name} failed after {MAX_RETRIES} attempts.")
+                    logger.error(f"Round {round_num}: {actor_name} failed permanently.");
+                    return None, None
+                
+                # MODIFICATION: Report retry status
+                retry_msg = f"Round {round_num}: {actor_name} failed. Retrying in {RETRY_DELAY}s..."
+                self._update_status(retry_msg)
+                logger.info(retry_msg)
+                time.sleep(RETRY_DELAY)
+
         logger.error(f"Round {round_num}: _robust_invoke finished loop unexpectedly for {actor_name}."); return None, None
 
     def _invoke_moderator_text(self, moderator_chain: Any, previous_speaker_name: str, previous_response: str, target_speaker_name: str, round_num: int) -> Tuple[Optional[str], str, Optional[str]]:
@@ -57,6 +85,8 @@ class Director:
         if moderator_chain is None:
              logger.error(f"Round {round_num}: Cannot invoke Moderator, chain is None for this mode/run.")
              return None, "Error: Moderator chain not available for this mode.", None
+
+        self._update_status(f"Round {round_num}: Moderator is evaluating {previous_speaker_name}'s response...")
 
         moderator_user_input = (
             f"The previous speaker was {previous_speaker_name}.\n"
@@ -69,6 +99,7 @@ class Director:
         )
         if moderator_raw_output is None:
             logger.error(f"Round {round_num}: Moderator failed to respond evaluating {previous_speaker_name}.")
+            self._update_status(f"Error: Moderator failed to respond.")
             return None, "Error: Moderator failed to generate response.", None
 
         summary_str: Optional[str] = None; guidance_str: str = ""
@@ -80,24 +111,27 @@ class Director:
                  if line_upper.lstrip().startswith("SUMMARY:"): parts = line.split(":", 1); summary_str = parts[1].strip() if len(parts) > 1 else ""; found_summary = True
                  elif line_upper.lstrip().startswith("GUIDANCE:"): parts = line.split(":", 1); guidance_str = parts[1].strip() if len(parts) > 1 else ""; found_guidance = True
             
-            if not found_summary and not found_guidance: # Neither found, treat whole output as summary (best guess)
+            if not found_summary and not found_guidance:
                 logger.warning(f"Round {round_num}: Moderator output missing 'SUMMARY:' and 'GUIDANCE:'. Using raw output as summary. Raw:\n{moderator_raw_output}")
                 summary_str = moderator_raw_output
-                guidance_str = "Continue the discussion naturally." # Default guidance
-            elif not found_summary: # Guidance found, but no summary
+                guidance_str = "Continue the discussion naturally."
+            elif not found_summary:
                 logger.warning(f"Round {round_num}: Moderator output missing 'SUMMARY:'. Using 'N/A' as summary. Raw:\n{moderator_raw_output}")
-                summary_str = "N/A" # Or perhaps an error message, or None to signal issue
-            elif not found_guidance: # Summary found, but no guidance
+                summary_str = "N/A"
+            elif not found_guidance:
                 logger.warning(f"Round {round_num}: Moderator output missing 'GUIDANCE:'. Using default guidance. Raw:\n{moderator_raw_output}")
                 guidance_str = "Continue the discussion naturally."
 
             logger.info(f"Round {round_num}: Moderator summary/guidance parsed for {previous_speaker_name}.")
+            self._update_status(f"Round {round_num}: Moderator evaluation complete.")
             return summary_str, guidance_str, moderator_raw_output
         except Exception as e:
             logger.error(f"Round {round_num}: Failed to parse Moderator text output: {e}\nRaw:\n{moderator_raw_output}", exc_info=True)
+            self._update_status(f"Error: Failed to parse moderator output.")
             return None, "Error: Failed to parse moderator output.", moderator_raw_output
 
     def _load_chains_for_mode(self, mode: str, run_moderated: bool) -> Tuple[Any, Any, Any, bool]:
+        self._update_status(f"Loading AI models for '{mode}' mode...")
         s_chain, c_chain, m_chain = None, None, None
         try:
             s_chain = socrates.get_chain(mode=mode)
@@ -110,12 +144,15 @@ class Director:
             if run_moderated and m_chain is None:
                  raise ImportError(f"Moderation requested but failed to load moderator chain for mode '{mode}'.")
             logger.info(f"Chains loaded successfully for mode '{mode}'.")
+            self._update_status(f"AI models loaded successfully.")
             return s_chain, c_chain, m_chain, True
         except ImportError as e:
             logger.critical(f"Chain loading failed: {e}", exc_info=True)
+            self._update_status(f"Error: Failed to load AI models.")
             return s_chain, c_chain, m_chain, False
-        except Exception as e: # Catch any other unexpected errors during loading
+        except Exception as e:
             logger.critical(f"Unexpected error during chain loading for mode '{mode}': {e}", exc_info=True)
+            self._update_status(f"Error: Unexpected error during model loading.")
             return s_chain, c_chain, m_chain, False
 
     def run_conversation_streamlit(self,
@@ -124,15 +161,8 @@ class Director:
                                   starting_philosopher: str = "Socrates",
                                   run_moderated: bool = True,
                                   mode: str = 'philosophy',
-                                  moderator_type: str = 'ai' # 'ai' or 'user_guidance'
+                                  moderator_type: str = 'ai'
                                   ) -> Tuple[List[Dict[str, Any]], str, bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """
-        Manages the conversation.
-        If moderator_type is 'ai' or run_moderated is False, it completes all rounds.
-        If moderator_type is 'user_guidance', it may pause after a moderator summary,
-        returning a state to be resumed.
-        Returns: (generated_messages, final_status, success, director_resume_state, data_for_user_guidance)
-        """
         run_mode_desc = ("MODERATED" if run_moderated else "DIRECT") + (f" ({moderator_type} control)" if run_moderated else "")
         logger.info(f"Director starting NEW {run_mode_desc} conversation in '{mode}' mode: Rounds={num_rounds}, Starter='{starting_philosopher}'.")
 
@@ -148,11 +178,8 @@ class Director:
             actor_1_name, actor_1_chain = "Confucius", c_chain
             actor_2_name, actor_2_chain = "Socrates", s_chain
 
-        # This is the state that will be passed around and updated.
-        # For 'user_guidance' mode, this entire dict might be returned to app.py
-        # For 'ai' mode, this is used internally in the loop.
         current_conversation_state = {
-            "messages_log": [], # Accumulates all messages for the final return
+            "messages_log": [],
             "current_round_num": 1,
             "num_rounds_total": num_rounds,
             "actor_1_name": actor_1_name, "actor_1_chain": actor_1_chain,
@@ -161,35 +188,30 @@ class Director:
             "mode": mode,
             "run_moderated": run_moderated,
             "moderator_type": moderator_type,
-            # For the very first turn of Actor 1
             "next_speaker_name": actor_1_name,
             "next_speaker_chain": actor_1_chain,
             "other_speaker_name": actor_2_name,
             "input_for_next_speaker": initial_input,
-            "ai_summary_from_last_mod": None, # From AI mod (used if user types 'auto')
-            "ai_guidance_from_last_mod": None, # From AI mod (used if user types 'auto')
-            "user_guidance_for_current_turn": None, # Set by resume_conversation_streamlit
+            "ai_summary_from_last_mod": None,
+            "ai_guidance_from_last_mod": None,
+            "user_guidance_for_current_turn": None,
         }
-
-        # If not 'user_guidance', loop through all rounds.
-        # If 'user_guidance', this loop will be effectively managed by app.py via run/resume.
+        
         if moderator_type != 'user_guidance' or not run_moderated:
-            for i in range(num_rounds * 2): # Each round has 2 philosopher turns
+            for i in range(num_rounds * 2):
                 round_num_for_log = (i // 2) + 1
                 
-                # Determine current speaker based on iteration (i)
-                if i % 2 == 0: # Actor 1's turn (or first turn of the pair)
+                if i % 2 == 0:
                     current_speaker_name = current_conversation_state["actor_1_name"]
                     current_speaker_chain = current_conversation_state["actor_1_chain"]
-                    next_direct_speaker_name = current_conversation_state["actor_2_name"] # Who the moderator will target
+                    next_direct_speaker_name = current_conversation_state["actor_2_name"]
                     input_content_for_speaker = current_conversation_state["input_for_next_speaker"]
-                else: # Actor 2's turn
+                else:
                     current_speaker_name = current_conversation_state["actor_2_name"]
                     current_speaker_chain = current_conversation_state["actor_2_chain"]
                     next_direct_speaker_name = current_conversation_state["actor_1_name"]
                     input_content_for_speaker = current_conversation_state["input_for_next_speaker"]
 
-                logger.info(f"AI/Direct Mode - Round {round_num_for_log}: {current_speaker_name}'s turn.")
                 speaker_response, speaker_monologue = self._robust_invoke(
                     current_speaker_chain, {"input": input_content_for_speaker}, current_speaker_name, round_num_for_log
                 )
@@ -199,16 +221,14 @@ class Director:
                     return current_conversation_state["messages_log"], f"Error: {current_speaker_name} failed.", False, None, None
                 current_conversation_state["messages_log"].append({"role": current_speaker_name, "content": speaker_response, "monologue": speaker_monologue})
 
-                # If this was the last turn of the last round, break
                 if i == (num_rounds * 2) - 1:
                     break
 
-                # Moderation or prepare direct input for next speaker
                 if run_moderated:
                     summary, guidance, _ = self._invoke_moderator_text(
                         m_chain, current_speaker_name, speaker_response, next_direct_speaker_name, round_num_for_log
                     )
-                    if summary is None: # Critical moderator failure
+                    if summary is None:
                         error_msg = f"Moderator failed after {current_speaker_name} in round {round_num_for_log}. Details: {guidance}"
                         current_conversation_state["messages_log"].append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
                         return current_conversation_state["messages_log"], "Error: Moderator failed.", False, None, None
@@ -223,17 +243,15 @@ class Director:
                         f"Guidance for your response: {guidance or 'Continue the discussion naturally.'}\n"
                         f"--- End Context ---"
                     )
-                else: # Direct dialogue
+                else:
                     current_conversation_state["input_for_next_speaker"] = speaker_response
             
-            # AI/Direct conversation completed all rounds
             final_status_msg = f"{run_mode_desc} conversation ('{mode}' mode) completed after {num_rounds} rounds."
             logger.info(final_status_msg)
+            self._update_status("Conversation complete.")
             return current_conversation_state["messages_log"], final_status_msg, True, None, None
         
-        else: # moderator_type == 'user_guidance' and run_moderated is True
-            # This path is for the first segment of a user-guided conversation.
-            # It will run one philosopher turn, then one AI moderator summary, then pause.
+        else:
             return self._handle_user_guidance_segment(current_conversation_state)
 
 
@@ -241,35 +259,18 @@ class Director:
                                      resume_state: Dict[str, Any],
                                      user_provided_guidance: str
                                      ) -> Tuple[List[Dict[str, Any]], str, bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """
-        Resumes a user-guided conversation.
-        resume_state is the state returned by a previous call that paused.
-        user_provided_guidance is the text from user, or "auto".
-        """
-        logger.info(f"Director RESUMING user-guided conversation. Round {resume_state.get('current_round_num', 'N/A')}, Next Speaker: {resume_state.get('next_speaker_name', 'N/A')}")
         
-        # Update resume_state with user's choice for guidance for *this specific turn*
+        logger.info(f"Director RESUMING user-guided conversation. Round {resume_state.get('current_round_num', 'N/A')}, Next Speaker: {resume_state.get('next_speaker_name', 'N/A')}")
+        self._update_status(f"Resuming with user guidance for {resume_state.get('next_speaker_name', 'N/A')}...")
+        
         resume_state["user_guidance_for_current_turn"] = user_provided_guidance
         
-        # The input for the philosopher was already partially prepared by the AI moderator summary.
-        # Now we incorporate the user's guidance (or AI's if 'auto').
-        
-        guidance_to_use = resume_state["ai_guidance_from_last_mod"] # Default if user types 'auto'
+        guidance_to_use = resume_state["ai_guidance_from_last_mod"]
         if user_provided_guidance and user_provided_guidance.strip().lower() != 'auto':
             guidance_to_use = user_provided_guidance
         
-        # `last_speaker_response_before_this_guidance` was stored in `input_for_next_speaker`
-        # when the moderator first summarized.
-        # No, this is simpler: `ai_summary_from_last_mod` has the summary.
-        # `last_speaker_response` in the resume_state is the actual text of the philosopher *before* the current user guidance.
-        
-        # The input_for_next_speaker should be the response of the philosopher *whose turn it is now*.
-        # This means we need the previous philosopher's response from the state.
-        # `previous_philosopher_actual_response` should be part of the resume_state.
-        
-        # Let's reconstruct the input for the philosopher who is about to speak:
         input_for_current_philosopher = (
-            f"{resume_state['previous_philosopher_actual_response']}\n\n" # This needs to be in resume_state
+            f"{resume_state['previous_philosopher_actual_response']}\n\n"
             f"--- Moderator Context ---\n"
             f"Summary: {resume_state['ai_summary_from_last_mod'] or 'N/A'}\n"
             f"Guidance for your response: {guidance_to_use or 'Continue the discussion naturally.'}\n"
@@ -277,100 +278,74 @@ class Director:
         )
         resume_state["input_for_next_speaker"] = input_for_current_philosopher
         
-        # Now, proceed with this segment (philosopher speaks, AI summarizes, maybe pause again)
         return self._handle_user_guidance_segment(resume_state)
 
 
     def _handle_user_guidance_segment(self,
                                       current_sg_state: Dict[str, Any]
                                       ) -> Tuple[List[Dict[str, Any]], str, bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """
-        Handles one segment of a user-guided conversation:
-        1. Current philosopher speaks.
-        2. AI Moderator summarizes.
-        3. If conversation continues, prepares to pause for next user guidance.
-        Returns messages *from this segment only*, status, success, and potentially new resume_state.
-        """
+        
         messages_this_segment: List[Dict[str, Any]] = []
 
         current_speaker_name = current_sg_state["next_speaker_name"]
         current_speaker_chain = current_sg_state["next_speaker_chain"]
-        other_speaker_name = current_sg_state["other_speaker_name"] # Who moderator targets next
+        other_speaker_name = current_sg_state["other_speaker_name"]
         input_content = current_sg_state["input_for_next_speaker"]
         round_num_for_log = current_sg_state["current_round_num"]
-
-        # 1. Current Philosopher's Turn
-        logger.info(f"User-Guidance Mode - Round {round_num_for_log}: {current_speaker_name}'s turn.")
+        
         speaker_response, speaker_monologue = self._robust_invoke(
             current_speaker_chain, {"input": input_content}, current_speaker_name, round_num_for_log
         )
         if speaker_response is None:
             error_msg = f"{current_speaker_name} failed in round {round_num_for_log}."
             messages_this_segment.append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
-            # Add to main log as well if this is how errors are handled
             current_sg_state["messages_log"].append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
-            return messages_this_segment, f"Error: {current_speaker_name} failed.", False, current_sg_state.copy(), None # Return full state on error
+            return messages_this_segment, f"Error: {current_speaker_name} failed.", False, current_sg_state.copy(), None
         
         messages_this_segment.append({"role": current_speaker_name, "content": speaker_response, "monologue": speaker_monologue})
         current_sg_state["messages_log"].append({"role": current_speaker_name, "content": speaker_response, "monologue": speaker_monologue})
-        current_sg_state["previous_philosopher_actual_response"] = speaker_response # Store for next resume
+        current_sg_state["previous_philosopher_actual_response"] = speaker_response
 
-        # Check if this philosopher's turn completes the required number of rounds/turns
-        # A full round completes after actor 2 speaks.
-        # If actor 1 just spoke, it's turn 1 of a round. If actor 2, it's turn 2.
-        # This needs careful tracking of whose turn it was vs actor_1_name/actor_2_name.
-        
         is_actor1_turn = (current_speaker_name == current_sg_state["actor_1_name"])
         
-        # End condition check: if current speaker was actor_2 AND it's the last round
         if not is_actor1_turn and round_num_for_log >= current_sg_state["num_rounds_total"]:
             final_status_msg = f"User-guided conversation ('{current_sg_state['mode']}' mode) completed after {current_sg_state['num_rounds_total']} rounds."
             logger.info(final_status_msg)
-            return messages_this_segment, final_status_msg, True, None, None # Conversation done
+            self._update_status("Conversation complete.")
+            return messages_this_segment, final_status_msg, True, None, None
 
-        # 2. AI Moderator Summarizes (for the *next* philosopher)
         ai_summary, ai_guidance, _ = self._invoke_moderator_text(
             current_sg_state["moderator_chain"], current_speaker_name, speaker_response, other_speaker_name, round_num_for_log
         )
-        if ai_summary is None: # Critical moderator failure
+        if ai_summary is None:
             error_msg = f"Moderator failed after {current_speaker_name} in round {round_num_for_log}. Details: {ai_guidance}"
             messages_this_segment.append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
             current_sg_state["messages_log"].append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
             return messages_this_segment, "Error: Moderator failed.", False, current_sg_state.copy(), None
 
-        # Log only the summary part for the user to see before they provide guidance
         mod_output_for_display = f"MODERATOR CONTEXT (AI Summary for your guidance to {other_speaker_name}):\nSUMMARY: {ai_summary or 'N/A'}"
         messages_this_segment.append({"role": "system", "content": mod_output_for_display, "monologue": None})
         current_sg_state["messages_log"].append({"role": "system", "content": mod_output_for_display, "monologue": None})
 
-        # Prepare state for the next segment (which will be PAUSED, waiting for user guidance)
         current_sg_state["ai_summary_from_last_mod"] = ai_summary
-        current_sg_state["ai_guidance_from_last_mod"] = ai_guidance # Store AI's original guidance for 'auto' option
-        current_sg_state["user_guidance_for_current_turn"] = None # Clear for next turn
-
-        # Swap speakers for the *next* turn
+        current_sg_state["ai_guidance_from_last_mod"] = ai_guidance
+        current_sg_state["user_guidance_for_current_turn"] = None
         current_sg_state["next_speaker_name"] = other_speaker_name
         current_sg_state["next_speaker_chain"] = current_sg_state["actor_1_chain"] if other_speaker_name == current_sg_state["actor_1_name"] else current_sg_state["actor_2_chain"]
         current_sg_state["other_speaker_name"] = current_speaker_name
 
-        # Advance round number if Actor 2 just finished
-        if not is_actor1_turn: # current_speaker was Actor 2
+        if not is_actor1_turn:
             current_sg_state["current_round_num"] = round_num_for_log + 1
         
-        # If we are about to ask for guidance for a turn that exceeds total_rounds, then the conversation is complete.
-        # This can happen if actor 1 just spoke in the final round, and we ask for guidance for actor 2,
-        # OR if actor 2 just spoke in final round (already handled above).
-
-        # If actor 1 just spoke in the final round:
         if is_actor1_turn and round_num_for_log >= current_sg_state["num_rounds_total"]:
-             # We *could* ask for guidance for Actor 2's final turn.
-             # The logic above for `if not is_actor1_turn and round_num_for_log >= ...` handles completion *after* Actor 2.
-             # This means if it's Actor 1's turn in the last round, we *do* ask for guidance for Actor 2.
-             pass # Continue to ask for guidance.
+             pass
 
         data_for_user_guidance = {
             'ai_summary': ai_summary,
-            'next_speaker_name': current_sg_state["next_speaker_name"] # This is now the 'other_speaker_name' from before swap
+            'next_speaker_name': current_sg_state["next_speaker_name"]
         }
-        logger.info(f"Pausing for user guidance. Next speaker: {data_for_user_guidance['next_speaker_name']}, Upcoming Round: {current_sg_state['current_round_num']}")
+        
+        pause_msg = f"Pausing for user guidance for {data_for_user_guidance['next_speaker_name']}..."
+        logger.info(pause_msg)
+        self._update_status(pause_msg)
         return messages_this_segment, "WAITING_FOR_USER_GUIDANCE", False, current_sg_state.copy(), data_for_user_guidance

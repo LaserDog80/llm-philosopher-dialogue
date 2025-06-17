@@ -17,27 +17,27 @@ def get_model_info_from_config(config_path="llm_config.json"):
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
         # Provide default 'Unknown' if a persona or model_name is missing
-        # Note: Model names are still useful even if prompts are dynamic
         return {
             'Socrates': config.get('socrates', {}).get('model_name', 'Unknown'),
             'Confucius': config.get('confucius', {}).get('model_name', 'Unknown'),
             'Moderator': config.get('moderator', {}).get('model_name', 'Unknown'),
+            'Translator': config.get('translator', {}).get('model_name', 'Unknown'), # Added this line
         }
     except FileNotFoundError:
         warning_msg = f"Config file not found at {config_path}. Cannot display model info."
         st.warning(warning_msg)
         logging.warning(warning_msg)
-        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
+        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown', 'Translator': 'Unknown'}
     except json.JSONDecodeError as e:
         error_msg = f"Error decoding JSON from {config_path}: {e}"
         st.error(error_msg)
         logging.error(error_msg)
-        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
+        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown', 'Translator': 'Unknown'}
     except Exception as e:
         error_msg = f"Error loading model info from config {config_path}: {e}"
         st.error(error_msg)
         logging.error(error_msg, exc_info=True) # Log full traceback
-        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown'}
+        return {'Socrates': 'Unknown', 'Confucius': 'Unknown', 'Moderator': 'Unknown', 'Translator': 'Unknown'}
 
 
 def display_sidebar(model_info):
@@ -75,6 +75,7 @@ def display_sidebar(model_info):
         st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
         st.markdown(f"**Confucius:** `{model_info.get('Confucius', 'Unknown')}`")
         st.markdown(f"**Moderator:** `{model_info.get('Moderator', 'Unknown')}`")
+        st.markdown(f"**Translator:** `{model_info.get('Translator', 'Unknown')}`") # Added this line
 
         st.divider()
 

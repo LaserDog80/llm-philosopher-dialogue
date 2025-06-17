@@ -9,38 +9,34 @@ import json
 from typing import List, Dict, Any, Optional
 
 # --- Load Environment Variables ---
-# Call early, before other imports that might rely on env vars (like auth)
 load_dotenv()
 
 # --- Import Authentication Module ---
 try:
-    import auth # Import the new authentication module
+    import auth
 except ImportError:
     st.error("Fatal Error: Authentication module (`auth.py`) not found.")
     st.stop()
 
 # Configure root logger
-# Include microseconds for potentially rapid status updates
 logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
 # --- Main App Execution ---
 
-# Initialize authentication status if it doesn't exist in session state
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Run the password check using the auth module.
 if not auth.check_password():
     st.stop()
 
 # --- !!! --- APPLICATION CODE BELOW RUNS ONLY IF AUTHENTICATED --- !!! ---
 
-# --- Local Imports (needed only after authentication) ---
+# --- Local Imports ---
 try:
     from direction import Director
     import gui
-    from translator import translate_conversation # Import the new translator function
+    from translator import translate_conversation
 except ImportError as e:
     st.error(f"Critical Error: Failed to import local modules post-authentication. Details: {e}")
     logging.exception("Failed to import local modules post-authentication.")
@@ -50,11 +46,11 @@ except Exception as e:
     logging.exception("Failed during initial imports post-authentication.")
     st.stop()
 
-# --- Configuration (specific to the authenticated app) ---
+# --- Configuration ---
 LOG_DIR = "logs"
 DEFAULT_NUM_ROUNDS = 3
 DEFAULT_CONVERSATION_MODE = 'Philosophy'
-DEFAULT_MODERATOR_CONTROL_MODE = 'AI Moderator' # 'AI Moderator' or 'User as Moderator (Guidance)'
+DEFAULT_MODERATOR_CONTROL_MODE = 'AI Moderator'
 
 # --- Log File Handling ---
 def initialize_log(num_rounds_for_log: int) -> bool:
@@ -108,9 +104,9 @@ def write_log(message_dict: Dict[str, Any]):
                  log_line = f"{content_str}"
              else:
                  log_line = f"SYSTEM: {content_str}"
-        elif role == 'USER': # This is the initial user prompt
+        elif role == 'USER':
             log_line = f"USER PROMPT: {str(content)}"
-        else: # Philosopher roles
+        else:
             log_line = f"{role}: {str(content)}"
 
         separator = "----------------------------------------"
@@ -148,6 +144,12 @@ def close_log():
         st.session_state.local_log_file_handle = None
     st.session_state.conversation_started_for_log = False
 
+# --- Callback function for Director status updates ---
+# MODIFICATION: This function now takes the placeholder as an argument
+def update_status_display(message, placeholder):
+    """This function will be passed to the Director to update the UI."""
+    placeholder.caption(f"{message}")
+
 
 # --- Initialize Session State ---
 default_app_values = {
@@ -167,14 +169,6 @@ default_app_values = {
 for key, default_value in default_app_values.items():
     if key not in st.session_state: st.session_state[key] = default_value
 
-if st.session_state.director_instance is None:
-    try:
-        st.session_state.director_instance = Director()
-        logger.info("Director instance created successfully post-authentication.")
-    except Exception as e:
-        st.error(f"Error initializing Director post-authentication: {e}")
-        logger.exception("Director initialization failed post-authentication.")
-        st.stop()
 
 # --- Render Authenticated UI ---
 try:
@@ -200,10 +194,20 @@ if st.session_state.get('show_monologue_cb', False):
         if not monologue_found: st.caption("No monologue entries found.")
 
 status_placeholder = st.empty()
-with status_placeholder.container():
-    current_status_text = st.session_state.get('current_status', 'Status unavailable.')
-    timestamp_str = datetime.datetime.now().strftime('%H:%M:%S')
-    st.caption(f"[{timestamp_str}] {current_status_text}")
+# MODIFICATION: Display the status from session_state here
+status_placeholder.caption(st.session_state.current_status)
+
+# MODIFICATION: Create the Director instance here, after the placeholder is defined
+if st.session_state.director_instance is None:
+    try:
+        # Create a lambda function to pass the placeholder to the callback
+        status_callback_with_placeholder = lambda msg: update_status_display(msg, status_placeholder)
+        st.session_state.director_instance = Director(status_callback=status_callback_with_placeholder)
+        logger.info("Director instance created successfully with status callback.")
+    except Exception as e:
+        st.error(f"Error initializing Director post-authentication: {e}")
+        logger.exception("Director initialization failed post-authentication.")
+        st.stop()
 
 
 # --- Determine Chat Input Prompt ---
@@ -215,14 +219,12 @@ if st.session_state.get('awaiting_user_guidance', False):
         pass
     chat_input_prompt_text = f"Enter your GUIDANCE for {next_speaker} (or type 'auto' for AI guidance this turn):"
 
-# --- Handle User Input (Initial Prompt or User Guidance) ---
+# --- Handle User Input ---
 prompt: Optional[str] = st.chat_input(chat_input_prompt_text, key="main_chat_input")
 
 if prompt:
     if st.session_state.get('awaiting_user_guidance', False):
-        # --- This is User-Provided Guidance ---
         logger.info(f"User guidance received for {st.session_state.get('next_speaker_for_guidance', 'N/A')}: '{prompt[:50]}...'")
-        st.session_state.current_status = "Processing your guidance..."
         
         user_guidance_message_content = f"USER GUIDANCE FOR {st.session_state.next_speaker_for_guidance}:\n{prompt}"
         if prompt.strip().lower() == "auto":
@@ -238,17 +240,16 @@ if prompt:
         if director and st.session_state.director_resume_state:
             try:
                 current_mode_resuming = st.session_state.director_resume_state.get('mode', DEFAULT_CONVERSATION_MODE)
-                with st.spinner(f"Philosophers conferring ({current_mode_resuming} mode) with your guidance..."):
-                    logger.info(f"Calling Director to resume with user guidance. Mode='{current_mode_resuming}'")
-                    
-                    gen_msgs, final_stat, success, resume_state, guidance_data = director.resume_conversation_streamlit(
-                        st.session_state.director_resume_state,
-                        user_provided_guidance=prompt
-                    )
-                    logger.info(f"Director resumed. Success: {success}. Status: {final_stat}")
+                logger.info(f"Calling Director to resume with user guidance. Mode='{current_mode_resuming}'")
+                
+                gen_msgs, final_stat, success, resume_state, guidance_data = director.resume_conversation_streamlit(
+                    st.session_state.director_resume_state,
+                    user_provided_guidance=prompt
+                )
+                logger.info(f"Director resumed. Success: {success}. Status: {final_stat}")
 
-                st.session_state.current_status = final_stat
                 st.session_state.messages.extend(gen_msgs)
+                st.session_state.current_status = final_stat # Update final status
                 for msg in gen_msgs: write_log(msg)
 
                 if final_stat == "WAITING_FOR_USER_GUIDANCE":
@@ -256,7 +257,6 @@ if prompt:
                     st.session_state.ai_summary_for_guidance_input = guidance_data['ai_summary']
                     st.session_state.next_speaker_for_guidance = guidance_data['next_speaker_name']
                     st.session_state.director_resume_state = resume_state
-                    st.session_state.current_status = f"Waiting for your guidance for {st.session_state.next_speaker_for_guidance}..."
                 elif success:
                     st.toast(f"Conversation continued ({current_mode_resuming} mode).", icon="✅")
                     st.session_state.conversation_completed = True
@@ -288,9 +288,7 @@ if prompt:
             st.rerun()
 
     else:
-        # --- This is an Initial User Prompt ---
         logger.info(f"User input received: '{prompt[:50]}...'")
-        st.session_state.current_status = "Processing..."
         st.session_state.messages = []
         st.session_state.conversation_completed = False
         st.session_state.log_content = None
@@ -317,9 +315,9 @@ if prompt:
             st.rerun()
 
 
-# --- Run Conversation if Flag is Set (Initial Start) ---
+# --- Run Conversation if Flag is Set ---
 if st.session_state.get('run_conversation_flag', False) and not st.session_state.get('awaiting_user_guidance', False) :
-    st.session_state.run_conversation_flag = False # Consume the flag
+    st.session_state.run_conversation_flag = False
     if not st.session_state.messages:
          logger.error("Run conversation flag set, but message list is empty.")
          st.error("Cannot start conversation, initial prompt missing.")
@@ -344,69 +342,55 @@ if st.session_state.get('run_conversation_flag', False) and not st.session_state
 
         if director:
             try:
-                st.session_state.current_status = f"Philosophers conferring ({current_mode} mode)..."
-                with st.spinner(f"Philosophers conferring ({current_mode} mode)..."):
-                     logger.info(f"Calling Director: Mode='{current_mode}', Rounds={num_rounds_selected}, Starter='{starting_philosopher_selected}', Moderated={run_moderated_flag}, ModCtrl='{moderator_type_for_director}'")
-                     
-                     generated_messages, final_status, success, director_resume_state, data_for_user_guidance = director.run_conversation_streamlit(
-                         initial_input=initial_prompt, num_rounds=num_rounds_selected,
-                         starting_philosopher=starting_philosopher_selected, 
-                         run_moderated=run_moderated_flag, 
-                         mode=current_mode,
-                         moderator_type=moderator_type_for_director
-                     )
-                     logger.info(f"Director finished initial run. Success: {success}. Status: {final_status}")
+                 logger.info(f"Calling Director: Mode='{current_mode}', Rounds={num_rounds_selected}, Starter='{starting_philosopher_selected}', Moderated={run_moderated_flag}, ModCtrl='{moderator_type_for_director}'")
+                 
+                 generated_messages, final_status, success, director_resume_state, data_for_user_guidance = director.run_conversation_streamlit(
+                     initial_input=initial_prompt, num_rounds=num_rounds_selected,
+                     starting_philosopher=starting_philosopher_selected, 
+                     run_moderated=run_moderated_flag, 
+                     mode=current_mode,
+                     moderator_type=moderator_type_for_director
+                 )
+                 logger.info(f"Director finished initial run. Success: {success}. Status: {final_status}")
                 
-                st.session_state.current_status = final_status
-                st.session_state.messages.extend(generated_messages)
-                for msg in generated_messages: write_log(msg)
+                 st.session_state.messages.extend(generated_messages)
+                 st.session_state.current_status = final_status
+                 for msg in generated_messages: write_log(msg)
 
-                if final_status == "WAITING_FOR_USER_GUIDANCE":
-                    st.session_state.awaiting_user_guidance = True
-                    st.session_state.ai_summary_for_guidance_input = data_for_user_guidance['ai_summary']
-                    st.session_state.next_speaker_for_guidance = data_for_user_guidance['next_speaker_name']
-                    st.session_state.director_resume_state = director_resume_state
-                    st.session_state.current_status = f"Waiting for your guidance for {st.session_state.next_speaker_for_guidance}..."
+                 if final_status == "WAITING_FOR_USER_GUIDANCE":
+                     st.session_state.awaiting_user_guidance = True
+                     st.session_state.ai_summary_for_guidance_input = data_for_user_guidance['ai_summary']
+                     st.session_state.next_speaker_for_guidance = data_for_user_guidance['next_speaker_name']
+                     st.session_state.director_resume_state = director_resume_state
 
-                elif success:
-                    st.toast(f"Conversation completed ({current_mode} mode).", icon="✅")
-                    st.session_state.conversation_completed = True
-                    
-                    # --- TRANSLATION LOGIC ---
-                    if st.session_state.get('output_style') == 'Translated Text':
-                        try:
-                            with st.spinner("Translating conversation for a more casual reading..."):
-                                original_messages_for_translation = st.session_state.messages[:]
-                                translated_text = translate_conversation(original_messages_for_translation)
+                 elif success:
+                     st.toast(f"Conversation completed ({current_mode} mode).", icon="✅")
+                     st.session_state.conversation_completed = True
+                     
+                     if st.session_state.get('output_style') == 'Translated Text':
+                         with st.spinner("Translating conversation..."):
+                             original_messages_for_translation = st.session_state.messages[:]
+                             translated_text = translate_conversation(original_messages_for_translation)
 
-                            # 1. Update the UI display
-                            st.session_state.messages = [{
-                                "role": "system",
-                                "content": f"### Translated Conversation\n\n---\n\n{translated_text}"
-                            }]
-                            
-                            # 2. Update the log content for download
-                            if 'log_content' in st.session_state and isinstance(st.session_state.log_content, list):
-                                # Append the translated text to the existing log content
-                                st.session_state.log_content.append("\n\n--- TRANSLATED CONVERSATION ---")
-                                st.session_state.log_content.append("---------------------------------")
-                                st.session_state.log_content.append(translated_text)
+                         st.session_state.messages = [{
+                             "role": "system",
+                             "content": f"### Translated Conversation\n\n---\n\n{translated_text}"
+                         }]
+                         
+                         if 'log_content' in st.session_state and isinstance(st.session_state.log_content, list):
+                             st.session_state.log_content.append("\n\n--- TRANSLATED CONVERSATION ---")
+                             st.session_state.log_content.append("---------------------------------")
+                             st.session_state.log_content.append(translated_text)
+                         st.toast("Translation complete!", icon="✨")
 
-                            st.toast("Translation complete!", icon="✨")
+                     st.session_state.director_resume_state = None
+                     close_log()
 
-                        except Exception as e:
-                            st.error(f"Failed to translate the conversation: {e}")
-                            logger.error(f"Translation failed: {e}", exc_info=True)
-                    # --- END OF TRANSLATION LOGIC ---
-
-                    st.session_state.director_resume_state = None
-                    close_log()
-
-                else: 
-                    st.toast(f"Conversation ended: {final_status}", icon="⚠️")
-                    st.session_state.conversation_completed = True 
-                    st.session_state.director_resume_state = None
-                    close_log()
+                 else: 
+                     st.toast(f"Conversation ended: {final_status}", icon="⚠️")
+                     st.session_state.conversation_completed = True 
+                     st.session_state.director_resume_state = None
+                     close_log()
 
             except Exception as e:
                 error_msg = f"An unexpected error occurred during conversation: {e}"
@@ -416,7 +400,7 @@ if st.session_state.get('run_conversation_flag', False) and not st.session_state
                 st.session_state.director_resume_state = None
                 close_log()
             finally:
-                if final_status != "WAITING_FOR_USER_GUIDANCE":
+                if st.session_state.get('current_status') != "WAITING_FOR_USER_GUIDANCE":
                     if 'current_run_mode' in st.session_state: del st.session_state.current_run_mode
                 st.rerun()
         else:
@@ -426,7 +410,7 @@ if st.session_state.get('run_conversation_flag', False) and not st.session_state
             st.rerun()
 
 
-# --- Controls Below Conversation (Authenticated) ---
+# --- Controls Below Conversation ---
 st.divider()
 col1, col2 = st.columns([1, 1])
 with col1:
@@ -465,7 +449,6 @@ with col2:
             st.caption("Log data unavailable for download.")
     elif st.session_state.get('conversation_completed', False):
          st.caption("Log content not available for download.")
-
 
 # --- Optional: Logout Button ---
 st.sidebar.divider()
