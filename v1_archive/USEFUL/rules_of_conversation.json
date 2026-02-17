@@ -1,0 +1,23 @@
+{
+    "gricean_maxims": {
+      "cooperative_principle": "Be cooperative in conversation towards a shared goal.",
+      "maxims": [
+        {
+          "name": "Quantity",
+          "instruction": "Provide necessary information, but no more than required."
+        },
+        {
+          "name": "Quality",
+          "instruction": "Be truthful; do not state falsehoods or unsupported claims."
+        },
+        {
+          "name": "Relation",
+          "instruction": "Be relevant to the current topic of conversation."
+        },
+        {
+          "name": "Manner",
+          "instruction": "Be clear, brief, orderly, and avoid ambiguity/obscurity."
+        }
+      ]
+    }
+  }
