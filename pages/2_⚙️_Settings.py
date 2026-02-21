@@ -1,185 +1,161 @@
-# pages/2_⚙️_Settings.py
+# pages/2_Settings.py — Persona prompt override management.
 
-import streamlit as st
 import os
+import sys
 import logging
 
-# --- Authentication Import and Check ---
+import streamlit as st
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
 try:
-    import auth # Import the new authentication module
+    import auth
 except ImportError:
-    st.error("Fatal Error: Authentication module (`auth.py`) not found.")
+    st.error("Fatal: `auth.py` not found.")
     st.stop()
 
-# Check authentication status using the auth module
-# Initialize session state variable if it doesn't exist
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
-# Run check - stops if not authenticated
 if not auth.check_password():
     st.stop()
-# --- End Authentication Check ---
 
-
-# Assuming llm_loader.py is in the parent directory or accessible via PYTHONPATH
-import sys
-# Ensure the parent directory is in the path only once if needed
+# ---------------------------------------------------------------------------
+# Imports
+# ---------------------------------------------------------------------------
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
+    sys.path.insert(0, parent_dir)
+
 try:
-    # Import ONLY the function needed to load default text
     from llm_loader import load_default_prompt_text
-except ImportError:
-    st.error("Could not import `load_default_prompt_text` from `llm_loader`. Make sure it's accessible.")
+    import gui
+except ImportError as e:
+    st.error(f"Import error: {e}")
     st.stop()
 
-# Configure logger for this page
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - SettingsPage - %(levelname)s - %(message)s')
 
-# --- Page Configuration ---
-# st.set_page_config(page_title="Settings", layout="wide") # Called once in app.py
-st.title("⚙️ AI Persona Prompt Settings")
-st.caption("View and override the default system prompts for each AI persona and conversation mode.")
+# ---------------------------------------------------------------------------
+# Inject CSS
+# ---------------------------------------------------------------------------
+gui.inject_chat_css()
 
-# --- Constants ---
-PERSONAS = ["Socrates", "Confucius", "Moderator"]
-MODES = ["Philosophy", "Bio"] # Modes available for override
-DEFAULT_FALLBACK_PROMPT_TEXT = "Default prompt file not found or could not be read."
-
-
-# --- Initialize Override State and Editor Content State ---
-st.session_state.setdefault('prompt_overrides', {})
-# New state to manage what the editor should display
-st.session_state.setdefault('editor_content_state', {})
-# State to track the last processed selection to manage editor updates
-st.session_state.setdefault('last_processed_key_settings', None)
-
-
-# --- UI Selectors ---
-col1, col2 = st.columns(2)
-with col1:
-    selected_persona = st.selectbox(
-        "Select Persona:",
-        PERSONAS,
-        key="settings_persona_select"
-    )
-with col2:
-    mode_map = {mode: mode.lower() for mode in MODES}
-    selected_mode_display = st.selectbox(
-        "Select Mode:",
-        MODES, # Show user-friendly names
-        key="settings_mode_select"
-    )
-    selected_mode_key = mode_map[selected_mode_display] # Get the lowercase key
-
-persona_key = selected_persona.lower()
-# Key representing the current persona/mode selection
-current_selection_key = f"{persona_key}_{selected_mode_key}"
-# Key for the text area widget itself
-text_area_key = f"prompt_editor_{current_selection_key}"
-
-# --- Logic to Update Editor Content State when Selection Changes ---
-# This runs *before* the text_area is rendered
-if st.session_state.last_processed_key_settings != current_selection_key:
-    logger.debug(f"Selection changed to {current_selection_key}. Updating editor content state.")
-    prompt_source = ""
-    # Check if an override exists for this combination
-    if current_selection_key in st.session_state.prompt_overrides:
-        prompt_for_editor = st.session_state.prompt_overrides[current_selection_key]
-        prompt_source = "User Override"
-    else:
-        # No override, load the default from file
-        default_prompt = load_default_prompt_text(persona_key, selected_mode_key)
-        if default_prompt is not None:
-            prompt_for_editor = default_prompt
-            prompt_source = "Default (from file)"
-        else:
-            prompt_for_editor = DEFAULT_FALLBACK_PROMPT_TEXT
-            prompt_source = "Default (Not Found!)"
-
-    # Set the intermediate state that the text_area will read from
-    st.session_state.editor_content_state[current_selection_key] = prompt_for_editor
-    st.session_state.last_processed_key_settings = current_selection_key
-    # # <<< REMOVED THIS LINE >>>
-    # # st.session_state[text_area_key] = prompt_for_editor # Also sync the actual widget state key initially
-    logger.info(f"Displaying prompt for {current_selection_key}. Source: {prompt_source}")
-    # Display the source info message (could be moved below the editor if preferred)
-    st.info(f"Displaying prompt for **{selected_persona}** ({selected_mode_display} Mode). Source: **{prompt_source}**")
-
-
-# --- Prompt Editor ---
-# Ensure the editor content state for the current key exists (redundant due to above but safe)
-st.session_state.editor_content_state.setdefault(current_selection_key, "")
-
-# Text Area now reads its initial value from the intermediate state.
-# User edits directly modify st.session_state[text_area_key] via Streamlit's handling.
-edited_prompt_value = st.text_area(
-    "System Prompt:",
-    # Read the value from our managed intermediate state
-    value=st.session_state.editor_content_state[current_selection_key],
-    height=300,
-    key=text_area_key, # Widget state associated with this key
-    help="Edit the prompt below. Click 'Save Override' to apply your changes for future sessions."
+# ---------------------------------------------------------------------------
+# Page layout
+# ---------------------------------------------------------------------------
+st.markdown(
+    '<div class="phd-header">'
+    '  <h1 class="phd-title">Prompt Settings</h1>'
+    '  <p class="phd-subtitle">View and override system prompts for each persona</p>'
+    '</div>',
+    unsafe_allow_html=True,
 )
 
-# --- Action Buttons ---
-col_btn1, col_btn2, col_btn3 = st.columns(3)
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+PERSONAS = ["Socrates", "Confucius", "Moderator"]
+MODES = ["Philosophy", "Bio"]
+FALLBACK_TEXT = "Default prompt file not found."
 
-with col_btn1:
-    # Save button reads the value directly from the text_area's state key
-    if st.button("💾 Save Override", key=f"save_{current_selection_key}"):
-        # Read the current value directly from the text area state key
-        current_editor_text = st.session_state.get(text_area_key, "")
-        st.session_state.prompt_overrides[current_selection_key] = current_editor_text
-        # Update the intermediate state to match what was saved
-        st.session_state.editor_content_state[current_selection_key] = current_editor_text
-        logger.info(f"Saved override for {current_selection_key}")
-        st.toast(f"✅ Override saved for {selected_persona} ({selected_mode_display})!", icon="💾")
-        # Rerun needed to update the "Source:" info message
-        st.rerun()
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+st.session_state.setdefault("prompt_overrides", {})
+st.session_state.setdefault("editor_content_state", {})
+st.session_state.setdefault("last_processed_key_settings", None)
 
-with col_btn2:
-    # Load default button updates the intermediate state, then reruns
-    if st.button("🔄 Load Default", key=f"load_{current_selection_key}"):
-        default_prompt = load_default_prompt_text(persona_key, selected_mode_key)
-        loaded_text = default_prompt if default_prompt is not None else DEFAULT_FALLBACK_PROMPT_TEXT
-        # Update the intermediate state variable ONLY
-        st.session_state.editor_content_state[current_selection_key] = loaded_text
-        logger.info(f"Set editor content state to default for {current_selection_key}")
-        if default_prompt is not None:
-            st.toast("🔄 Default prompt loaded into editor.", icon="🔄")
-        else:
-             st.error(f"Could not load default prompt for {selected_persona} ({selected_mode_display}). File might be missing.")
-        # Rerun will cause the text_area to read the updated intermediate state
-        st.rerun()
+# ---------------------------------------------------------------------------
+# Selectors
+# ---------------------------------------------------------------------------
+col1, col2 = st.columns(2)
+with col1:
+    selected_persona = st.selectbox("Persona:", PERSONAS, key="settings_persona_select")
+with col2:
+    selected_mode = st.selectbox("Mode:", MODES, key="settings_mode_select")
 
-with col_btn3:
-    # Clear override button removes override, updates intermediate state, then reruns
-    if current_selection_key in st.session_state.prompt_overrides:
-        if st.button("❌ Clear Override", key=f"clear_{current_selection_key}"):
-            # 1. Delete the actual override
-            del st.session_state.prompt_overrides[current_selection_key]
-            logger.info(f"Cleared override for {current_selection_key}")
+persona_key = selected_persona.lower()
+mode_key = selected_mode.lower()
+selection_key = f"{persona_key}_{mode_key}"
+text_area_key = f"prompt_editor_{selection_key}"
 
-            # 2. Load the default prompt to update the editor display on next run
-            default_prompt_after_clear = load_default_prompt_text(persona_key, selected_mode_key)
-            loaded_text = default_prompt_after_clear if default_prompt_after_clear is not None else DEFAULT_FALLBACK_PROMPT_TEXT
-            # Update the intermediate state variable ONLY
-            st.session_state.editor_content_state[current_selection_key] = loaded_text
-
-            # 3. Show toast and rerun
-            st.toast(f"🗑️ Override cleared for {selected_persona} ({selected_mode_display}). Using default.", icon="🗑️")
-            st.rerun()
+# ---------------------------------------------------------------------------
+# Load editor content when selection changes
+# ---------------------------------------------------------------------------
+if st.session_state.last_processed_key_settings != selection_key:
+    if selection_key in st.session_state.prompt_overrides:
+        prompt_for_editor = st.session_state.prompt_overrides[selection_key]
+        source = "User Override"
     else:
-        # Display disabled button if no override exists
-        st.button("❌ Clear Override", key=f"clear_{current_selection_key}", disabled=True, help="No override saved for this combination.")
+        default_prompt = load_default_prompt_text(persona_key, mode_key)
+        if default_prompt is not None:
+            prompt_for_editor = default_prompt
+            source = "Default (from file)"
+        else:
+            prompt_for_editor = FALLBACK_TEXT
+            source = "Default (Not Found)"
 
+    st.session_state.editor_content_state[selection_key] = prompt_for_editor
+    st.session_state.last_processed_key_settings = selection_key
+    st.info(f"**{selected_persona}** ({selected_mode}) — Source: **{source}**")
+
+# ---------------------------------------------------------------------------
+# Prompt editor
+# ---------------------------------------------------------------------------
+st.session_state.editor_content_state.setdefault(selection_key, "")
+
+st.text_area(
+    "System Prompt:",
+    value=st.session_state.editor_content_state[selection_key],
+    height=300,
+    key=text_area_key,
+    help="Edit the prompt. Click 'Save Override' to apply changes.",
+)
+
+# ---------------------------------------------------------------------------
+# Action buttons
+# ---------------------------------------------------------------------------
+col_a, col_b, col_c = st.columns(3)
+
+with col_a:
+    if st.button("Save Override", key=f"save_{selection_key}"):
+        current_text = st.session_state.get(text_area_key, "")
+        st.session_state.prompt_overrides[selection_key] = current_text
+        st.session_state.editor_content_state[selection_key] = current_text
+        st.toast(f"Override saved for {selected_persona} ({selected_mode}).")
+        st.rerun()
+
+with col_b:
+    if st.button("Load Default", key=f"load_{selection_key}"):
+        default_prompt = load_default_prompt_text(persona_key, mode_key)
+        loaded = default_prompt if default_prompt is not None else FALLBACK_TEXT
+        st.session_state.editor_content_state[selection_key] = loaded
+        st.toast("Default prompt loaded into editor.")
+        st.rerun()
+
+with col_c:
+    has_override = selection_key in st.session_state.prompt_overrides
+    if st.button("Clear Override", key=f"clear_{selection_key}", disabled=not has_override):
+        if has_override:
+            del st.session_state.prompt_overrides[selection_key]
+            default_prompt = load_default_prompt_text(persona_key, mode_key)
+            st.session_state.editor_content_state[selection_key] = (
+                default_prompt if default_prompt is not None else FALLBACK_TEXT
+            )
+            st.toast(f"Override cleared for {selected_persona} ({selected_mode}).")
+            st.rerun()
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
 st.divider()
-st.caption("Changes saved here will persist for your current session and affect both the main dialogue and the Direct AI Chat.")
-st.caption("Default prompts are loaded directly from the `.txt` files in the `prompts` directory.")
+st.caption("Changes persist for this session and affect both the main dialogue and Direct Chat.")
 
-# Display current overrides (optional debug view)
-with st.expander("View All Current Overrides"):
-    st.write(st.session_state.get('prompt_overrides', {}))
+with st.expander("View All Overrides"):
+    overrides = st.session_state.get("prompt_overrides", {})
+    if overrides:
+        for k, v in overrides.items():
+            st.markdown(f"**{k}:** `{v[:80]}...`" if len(v) > 80 else f"**{k}:** `{v}`")
+    else:
+        st.caption("No overrides set.")

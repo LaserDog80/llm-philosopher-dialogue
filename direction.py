@@ -1,56 +1,49 @@
-# Filename: direction.py
+# direction.py — Conversation orchestrator (Director).
 
 import time
-import re
 import logging
 from typing import List, Tuple, Dict, Any, Optional
 
-# --- Local Imports ---
-try:
-    import socrates
-    import confucius
-    import moderator
-except ImportError as e:
-     logging.critical(f"Failed to import actor modules: {e}", exc_info=True)
-     raise
+from core.persona import create_chain
+from core.utils import extract_and_clean
 
 # --- Configuration ---
 MAX_RETRIES = 3
-RETRY_DELAY = 2 # seconds
+RETRY_DELAY = 2  # seconds
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - DIRECTOR - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-THINK_BLOCK_REGEX = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
 
 class Director:
     def __init__(self):
         logger.info("Director initialized (chains will be loaded per conversation mode/resume).")
 
-    def _extract_and_clean(self, raw_response: Optional[str]) -> Tuple[str, Optional[str]]:
-        if not raw_response: return "", None
-        monologue: Optional[str] = None; clean_response: str = raw_response
-        match = THINK_BLOCK_REGEX.search(raw_response)
-        if match: monologue = match.group(1).strip(); clean_response = THINK_BLOCK_REGEX.sub('', raw_response).strip()
-        if not clean_response and raw_response: logger.warning("Cleaned response was empty, original might have been entirely a think block."); return "", monologue
-        elif not clean_response and not raw_response: return "", None
-        return clean_response, monologue
-
     def _robust_invoke(self, chain: Any, input_dict: Dict[str, Any], actor_name: str, round_num: int) -> Tuple[Optional[str], Optional[str]]:
-        if chain is None: logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None."); return None, None
+        """Invoke a chain with retry logic. Returns (clean_response, monologue)."""
+        if chain is None:
+            logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None.")
+            return None, None
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                logger.info(f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES}). Input keys: {list(input_dict.keys())}")
-                start_time = time.time(); raw_response_obj = chain.invoke(input_dict); raw_response = str(raw_response_obj) if raw_response_obj is not None else None; end_time = time.time()
-                logger.info(f"Round {round_num}: {actor_name} responded in {end_time - start_time:.2f}s.")
-                if raw_response is not None and raw_response.strip(): clean_response, monologue = self._extract_and_clean(raw_response); return clean_response, monologue
-                elif raw_response == "": logger.info(f"Round {round_num}: {actor_name} returned an empty string."); return "", None
-                else: raise ValueError(f"Invalid or empty raw response from {actor_name}: '{raw_response}'")
+                logger.info(f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES})")
+                start_time = time.time()
+                raw_response_obj = chain.invoke(input_dict)
+                raw_response = str(raw_response_obj) if raw_response_obj is not None else None
+                elapsed = time.time() - start_time
+                logger.info(f"Round {round_num}: {actor_name} responded in {elapsed:.2f}s.")
+                if raw_response is not None and raw_response.strip():
+                    return extract_and_clean(raw_response)
+                elif raw_response == "":
+                    return "", None
+                else:
+                    raise ValueError(f"Empty response from {actor_name}: '{raw_response}'")
             except Exception as e:
-                logger.error(f"Round {round_num}: {actor_name}'s turn failed (Attempt {attempt}): {e}", exc_info=True)
-                if attempt == MAX_RETRIES: logger.error(f"Round {round_num}: {actor_name} failed permanently."); return None, None
-                logger.info(f"Round {round_num}: Retrying {actor_name} in {RETRY_DELAY}s..."); time.sleep(RETRY_DELAY)
-        logger.error(f"Round {round_num}: _robust_invoke finished loop unexpectedly for {actor_name}."); return None, None
+                logger.error(f"Round {round_num}: {actor_name} failed (Attempt {attempt}): {e}", exc_info=True)
+                if attempt == MAX_RETRIES:
+                    logger.error(f"Round {round_num}: {actor_name} failed permanently.")
+                    return None, None
+                logger.info(f"Retrying in {RETRY_DELAY}s...")
+                time.sleep(RETRY_DELAY)
+        return None, None
 
     def _invoke_moderator_text(self, moderator_chain: Any, previous_speaker_name: str, previous_response: str, target_speaker_name: str, round_num: int) -> Tuple[Optional[str], str, Optional[str]]:
         """Invokes the moderator, parses plain text SUMMARY/GUIDANCE output. Returns (summary, guidance, raw_output)."""
@@ -98,24 +91,22 @@ class Director:
             return None, "Error: Failed to parse moderator output.", moderator_raw_output
 
     def _load_chains_for_mode(self, mode: str, run_moderated: bool) -> Tuple[Any, Any, Any, bool]:
+        """Load philosopher and moderator chains via the unified factory."""
         s_chain, c_chain, m_chain = None, None, None
         try:
-            s_chain = socrates.get_chain(mode=mode)
-            c_chain = confucius.get_chain(mode=mode)
+            s_chain = create_chain("socrates", mode=mode)
+            c_chain = create_chain("confucius", mode=mode)
             if run_moderated:
-                m_chain = moderator.get_chain(mode=mode)
+                m_chain = create_chain("moderator", mode=mode)
 
             if s_chain is None or c_chain is None:
-                 raise ImportError(f"Failed to load philosopher chains for mode '{mode}'. Socrates: {s_chain is not None}, Confucius: {c_chain is not None}")
+                raise ImportError(f"Philosopher chain load failed for mode '{mode}'")
             if run_moderated and m_chain is None:
-                 raise ImportError(f"Moderation requested but failed to load moderator chain for mode '{mode}'.")
-            logger.info(f"Chains loaded successfully for mode '{mode}'.")
+                raise ImportError(f"Moderator chain load failed for mode '{mode}'")
+            logger.info(f"Chains loaded for mode '{mode}'.")
             return s_chain, c_chain, m_chain, True
-        except ImportError as e:
-            logger.critical(f"Chain loading failed: {e}", exc_info=True)
-            return s_chain, c_chain, m_chain, False
-        except Exception as e: # Catch any other unexpected errors during loading
-            logger.critical(f"Unexpected error during chain loading for mode '{mode}': {e}", exc_info=True)
+        except Exception as e:
+            logger.critical(f"Chain loading error: {e}", exc_info=True)
             return s_chain, c_chain, m_chain, False
 
     def run_conversation_streamlit(self,

@@ -11,7 +11,7 @@
   "socrates": {
     "model_name": "Qwen/Qwen3-235B-A22B",
     "temperature": 0.5,
-    "max_tokens": 100,
+    "max_tokens": 250,
     "top_p": 0.95,
     "presence_penalty": 0.1,
     "frequency_penalty": 0.1,
@@ -20,7 +20,7 @@
   "confucius": {
     "model_name": "Qwen/Qwen3-235B-A22B",
     "temperature": 0.6,
-    "max_tokens": 110,
+    "max_tokens": 250,
     "top_p": 0.9,
     "presence_penalty": 0.0,
     "frequency_penalty": 0.0,
@@ -29,7 +29,7 @@
   "moderator": {
     "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
     "temperature": 0.6,
-    "max_tokens": 50,
+    "max_tokens": 200,
     "top_p": 0.85,
     "request_timeout": 30
   },
