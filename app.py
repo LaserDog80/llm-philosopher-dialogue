@@ -43,6 +43,7 @@ try:
     from direction import Director
     import gui
     from translator import translate_conversation
+    from core.validation import sanitize_input, validate_user_input
 except ImportError as e:
     st.error(f"Failed to import modules: {e}")
     logger.exception("Module import failed.")
@@ -377,6 +378,12 @@ if prompt:
             st.rerun()
     else:
         # ── New conversation path ──
+        prompt = sanitize_input(prompt)
+        is_valid, error_msg = validate_user_input(prompt)
+        if not is_valid:
+            st.warning(error_msg)
+            st.stop()
+
         logger.info(f"New prompt: '{prompt[:50]}...'")
         _reset_conversation()
 
