@@ -48,6 +48,41 @@ class Director:
                 time.sleep(RETRY_DELAY)
         return None, None
 
+    def _robust_stream(self, chain: Any, input_dict: Dict[str, Any], actor_name: str,
+                       round_num: int, on_token_callback: Any = None
+                       ) -> Tuple[Optional[str], Optional[str]]:
+        """Stream a chain response token-by-token with fallback to invoke.
+
+        Returns (clean_response, monologue) — same contract as _robust_invoke.
+        """
+        if chain is None:
+            logger.error(f"Round {round_num}: Cannot stream {actor_name}, chain is None.")
+            return None, None
+
+        try:
+            logger.info(f"Round {round_num}: Streaming {actor_name}...")
+            start_time = time.time()
+            accumulated = ""
+            for chunk in chain.stream(input_dict):
+                token = str(chunk) if chunk is not None else ""
+                accumulated += token
+                if on_token_callback:
+                    on_token_callback(token)
+
+            elapsed = time.time() - start_time
+            logger.info(f"Round {round_num}: {actor_name} streamed in {elapsed:.2f}s ({len(accumulated)} chars).")
+
+            if accumulated.strip():
+                return extract_and_clean(accumulated)
+
+            # Empty stream — fall back to invoke
+            logger.warning(f"Round {round_num}: Empty stream from {actor_name}, falling back to invoke.")
+            return self._robust_invoke(chain, input_dict, actor_name, round_num)
+
+        except Exception as e:
+            logger.warning(f"Round {round_num}: Streaming failed for {actor_name}: {e}. Falling back to invoke.")
+            return self._robust_invoke(chain, input_dict, actor_name, round_num)
+
     def _invoke_moderator_text(self, moderator_chain: Any, previous_speaker_name: str,
                                previous_response: str, target_speaker_name: str,
                                round_num: int, conversation_context: str = ""
@@ -142,13 +177,22 @@ class Director:
                                    starting_philosopher: str = "Socrates",
                                    run_moderated: bool = True,
                                    mode: str = 'philosophy',
-                                   moderator_type: str = 'ai'
+                                   moderator_type: str = 'ai',
+                                   stream: bool = False,
+                                   on_token: Any = None,
+                                   on_status: Any = None,
                                    ) -> Tuple[List[Dict[str, Any]], str, bool, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
         Manages the conversation.
         If moderator_type is 'ai' or run_moderated is False, it completes all rounds.
         If moderator_type is 'user_guidance', it may pause after a moderator summary,
         returning a state to be resumed.
+
+        Optional streaming support:
+        - stream: if True, use _robust_stream instead of _robust_invoke for philosopher turns
+        - on_token: callback(token_str) called for each streamed token
+        - on_status: callback(status_str) called for status updates (e.g. "Socrates is thinking...")
+
         Returns: (generated_messages, final_status, success, director_resume_state, data_for_user_guidance)
         """
         run_mode_desc = ("MODERATED" if run_moderated else "DIRECT") + (f" ({moderator_type} control)" if run_moderated else "")
@@ -224,14 +268,23 @@ class Director:
                     input_content_for_speaker = current_conversation_state["input_for_next_speaker"]
 
                 logger.info(f"AI/Direct Mode - Round {round_num_for_log}: {current_speaker_name}'s turn.")
+                if on_status:
+                    on_status(f"{current_speaker_name} is thinking... (Round {round_num_for_log} of {num_rounds})")
 
                 # Build input with conversation memory
                 history = memory.get_history_for_chain()
-                speaker_response, speaker_monologue = self._robust_invoke(
-                    current_speaker_chain,
-                    {"input": input_content_for_speaker, "chat_history": history},
-                    current_speaker_name, round_num_for_log
-                )
+                invoke_input = {"input": input_content_for_speaker, "chat_history": history}
+                if stream:
+                    speaker_response, speaker_monologue = self._robust_stream(
+                        current_speaker_chain, invoke_input,
+                        current_speaker_name, round_num_for_log,
+                        on_token_callback=on_token,
+                    )
+                else:
+                    speaker_response, speaker_monologue = self._robust_invoke(
+                        current_speaker_chain, invoke_input,
+                        current_speaker_name, round_num_for_log,
+                    )
                 if speaker_response is None:
                     error_msg = f"{current_speaker_name} failed in round {round_num_for_log}."
                     current_conversation_state["messages_log"].append({"role": "system", "content": f"Error: {error_msg}", "monologue": None})
