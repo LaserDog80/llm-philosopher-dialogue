@@ -34,6 +34,7 @@ if parent_dir not in sys.path:
 try:
     from llm_loader import load_llm_config_for_persona
     from core.utils import extract_think_block, clean_response
+    from core.registry import get_display_names
     import gui
 except ImportError as e:
     st.error(f"Import error: {e}")
@@ -49,7 +50,7 @@ gui.inject_chat_css()
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PERSONAS = ["Socrates", "Confucius", "Moderator"]
+PERSONAS = get_display_names() + ["Moderator"]
 MODES = ["Philosophy", "Bio"]
 
 # ---------------------------------------------------------------------------

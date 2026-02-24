@@ -29,6 +29,13 @@ def _moderator_response(summary, guidance):
     return f"SUMMARY: {summary}\nGUIDANCE: {guidance}"
 
 
+def _mock_load_return(s_chain, c_chain, m_chain, success):
+    """Build the new-style _load_chains_for_mode return value.
+    Returns (phil_chains_dict, m_chain, success)."""
+    phil_chains = {"socrates": s_chain, "confucius": c_chain}
+    return (phil_chains, m_chain, success)
+
+
 # ---------------------------------------------------------------------------
 # TestRobustInvoke
 # ---------------------------------------------------------------------------
@@ -160,7 +167,7 @@ class TestRunConversation:
             _moderator_response("sum2", "guide2"),
             _moderator_response("sum3", "guide3"),
         ])
-        mock_load.return_value = (s_chain, c_chain, m_chain, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, m_chain, True)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="What is virtue?",
@@ -182,7 +189,7 @@ class TestRunConversation:
         """Direct mode (bypass moderator) runs without moderator chain."""
         s_chain = _make_mock_chain([_philosopher_response("S1")])
         c_chain = _make_mock_chain([_philosopher_response("C1")])
-        mock_load.return_value = (s_chain, c_chain, None, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, None, True)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="What is justice?",
@@ -205,7 +212,7 @@ class TestRunConversation:
         s_chain = _make_mock_chain([_philosopher_response("Socrates speaks")])
         c_chain = _make_mock_chain([])  # Won't be called yet
         m_chain = _make_mock_chain([_moderator_response("summary", "guidance")])
-        mock_load.return_value = (s_chain, c_chain, m_chain, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, m_chain, True)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="Question?",
@@ -223,7 +230,7 @@ class TestRunConversation:
 
     @patch.object(Director, "_load_chains_for_mode")
     def test_chain_load_failure(self, mock_load):
-        mock_load.return_value = (None, None, None, False)
+        mock_load.return_value = ({}, None, False)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="Test",
@@ -249,7 +256,7 @@ class TestResumeConversation:
         c_chain = _make_mock_chain([_philosopher_response("Confucius responds")])
         s_chain = _make_mock_chain([])
         m_chain = _make_mock_chain([_moderator_response("sum", "guide")])
-        mock_load.return_value = (s_chain, c_chain, m_chain, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, m_chain, True)
 
         # Simulate a serialized resume state (no chain objects)
         resume_state = {
@@ -286,7 +293,7 @@ class TestResumeConversation:
 
     @patch.object(Director, "_load_chains_for_mode")
     def test_resume_chain_reload_failure(self, mock_load):
-        mock_load.return_value = (None, None, None, False)
+        mock_load.return_value = ({}, None, False)
 
         resume_state = {
             "mode": "philosophy",
@@ -315,7 +322,7 @@ class TestSerializedState:
         s_chain = _make_mock_chain([_philosopher_response("S1")])
         c_chain = _make_mock_chain([])
         m_chain = _make_mock_chain([_moderator_response("sum", "guide")])
-        mock_load.return_value = (s_chain, c_chain, m_chain, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, m_chain, True)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="Question?",
@@ -336,7 +343,7 @@ class TestSerializedState:
         s_chain = _make_mock_chain([_philosopher_response("S1")])
         c_chain = _make_mock_chain([])
         m_chain = _make_mock_chain([_moderator_response("sum", "guide")])
-        mock_load.return_value = (s_chain, c_chain, m_chain, True)
+        mock_load.return_value = _mock_load_return(s_chain, c_chain, m_chain, True)
 
         msgs, status, success, resume, guidance = self.director.run_conversation_streamlit(
             initial_input="Question?",

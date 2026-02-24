@@ -7,6 +7,7 @@ from typing import List, Tuple, Dict, Any, Optional
 from core.persona import create_chain
 from core.utils import extract_and_clean
 from core.memory import ConversationMemory
+from core.registry import get_philosopher_ids, get_philosopher
 
 # --- Configuration ---
 MAX_RETRIES = 3
@@ -109,24 +110,31 @@ class Director:
             logger.error(f"Round {round_num}: Failed to parse Moderator text output: {e}\nRaw:\n{moderator_raw_output}", exc_info=True)
             return None, "Error: Failed to parse moderator output.", moderator_raw_output
 
-    def _load_chains_for_mode(self, mode: str, run_moderated: bool) -> Tuple[Any, Any, Any, bool]:
-        """Load philosopher and moderator chains via the unified factory."""
-        s_chain, c_chain, m_chain = None, None, None
+    def _load_chains_for_mode(self, mode: str, run_moderated: bool) -> Tuple[Dict[str, Any], Any, bool]:
+        """Load philosopher and moderator chains via the registry + factory.
+
+        Returns (philosopher_chains_dict, moderator_chain, success).
+        ``philosopher_chains_dict`` maps philosopher id -> chain.
+        """
+        phil_chains: Dict[str, Any] = {}
+        m_chain = None
         try:
-            s_chain = create_chain("socrates", mode=mode)
-            c_chain = create_chain("confucius", mode=mode)
+            for pid in get_philosopher_ids():
+                chain = create_chain(pid, mode=mode)
+                if chain is None:
+                    raise ImportError(f"Chain load failed for philosopher '{pid}' in mode '{mode}'")
+                phil_chains[pid] = chain
+
             if run_moderated:
                 m_chain = create_chain("moderator", mode=mode)
+                if m_chain is None:
+                    raise ImportError(f"Moderator chain load failed for mode '{mode}'")
 
-            if s_chain is None or c_chain is None:
-                raise ImportError(f"Philosopher chain load failed for mode '{mode}'")
-            if run_moderated and m_chain is None:
-                raise ImportError(f"Moderator chain load failed for mode '{mode}'")
-            logger.info(f"Chains loaded for mode '{mode}'.")
-            return s_chain, c_chain, m_chain, True
+            logger.info(f"Chains loaded for mode '{mode}': {list(phil_chains.keys())}.")
+            return phil_chains, m_chain, True
         except Exception as e:
             logger.critical(f"Chain loading error: {e}", exc_info=True)
-            return s_chain, c_chain, m_chain, False
+            return phil_chains, m_chain, False
 
     def run_conversation_streamlit(self,
                                    initial_input: str,
@@ -146,17 +154,33 @@ class Director:
         run_mode_desc = ("MODERATED" if run_moderated else "DIRECT") + (f" ({moderator_type} control)" if run_moderated else "")
         logger.info(f"Director starting NEW {run_mode_desc} conversation in '{mode}' mode: Rounds={num_rounds}, Starter='{starting_philosopher}'.")
 
-        s_chain, c_chain, m_chain, chains_loaded_ok = self._load_chains_for_mode(mode, run_moderated)
+        phil_chains, m_chain, chains_loaded_ok = self._load_chains_for_mode(mode, run_moderated)
         if not chains_loaded_ok:
             error_msg = f"Error: Failed to load necessary models/chains for '{mode}' mode."
             return [], error_msg, False, None, None
 
-        if starting_philosopher == "Socrates":
-            actor_1_name, actor_1_chain = "Socrates", s_chain
-            actor_2_name, actor_2_chain = "Confucius", c_chain
-        else:
-            actor_1_name, actor_1_chain = "Confucius", c_chain
-            actor_2_name, actor_2_chain = "Socrates", s_chain
+        # Map display names to chains via the registry
+        phil_ids = get_philosopher_ids()
+        id_to_name = {}
+        for pid in phil_ids:
+            pcfg = get_philosopher(pid)
+            if pcfg:
+                id_to_name[pid] = pcfg.display_name
+
+        # Determine actor order based on starting_philosopher
+        starter_id = None
+        for pid, dname in id_to_name.items():
+            if dname == starting_philosopher:
+                starter_id = pid
+                break
+        if starter_id is None:
+            starter_id = phil_ids[0]
+
+        other_id = [pid for pid in phil_ids if pid != starter_id][0]
+        actor_1_name = id_to_name[starter_id]
+        actor_1_chain = phil_chains[starter_id]
+        actor_2_name = id_to_name[other_id]
+        actor_2_chain = phil_chains[other_id]
 
         # Create conversation memory
         memory = ConversationMemory()
@@ -268,15 +292,17 @@ class Director:
         if resume_state.get("actor_1_chain") is None:
             mode = resume_state.get("mode", "philosophy")
             run_moderated = resume_state.get("run_moderated", True)
-            s_chain, c_chain, m_chain, ok = self._load_chains_for_mode(mode, run_moderated)
+            phil_chains, m_chain, ok = self._load_chains_for_mode(mode, run_moderated)
             if not ok:
                 return [], "Error: Failed to reload chains on resume.", False, None, None
-            if resume_state["actor_1_name"] == "Socrates":
-                resume_state["actor_1_chain"] = s_chain
-                resume_state["actor_2_chain"] = c_chain
-            else:
-                resume_state["actor_1_chain"] = c_chain
-                resume_state["actor_2_chain"] = s_chain
+
+            # Map actor names back to chain IDs
+            for pid, chain in phil_chains.items():
+                pcfg = get_philosopher(pid)
+                if pcfg and pcfg.display_name == resume_state["actor_1_name"]:
+                    resume_state["actor_1_chain"] = chain
+                elif pcfg and pcfg.display_name == resume_state["actor_2_name"]:
+                    resume_state["actor_2_chain"] = chain
             resume_state["moderator_chain"] = m_chain
             # Restore correct next_speaker_chain
             if resume_state["next_speaker_name"] == resume_state["actor_1_name"]:

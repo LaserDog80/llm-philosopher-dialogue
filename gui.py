@@ -6,48 +6,14 @@ import logging
 import streamlit as st
 from typing import List, Dict, Any, Optional
 
+from core.registry import get_speaker_styles, get_display_names, get_philosopher_ids
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Speaker visual configuration
+# Speaker visual configuration — loaded from philosophers.json registry
 # ---------------------------------------------------------------------------
-SPEAKER_STYLES = {
-    "socrates": {
-        "color": "#5B8DEF",
-        "bg": "#f0f5ff",
-        "text_color": "#2D5FC4",
-        "initials": "S",
-        "display_name": "Socrates",
-    },
-    "confucius": {
-        "color": "#D4A03C",
-        "bg": "#fdf6e3",
-        "text_color": "#8B6914",
-        "initials": "C",
-        "display_name": "Confucius",
-    },
-    "moderator": {
-        "color": "#8B8B8B",
-        "bg": "#f5f5f5",
-        "text_color": "#555555",
-        "initials": "M",
-        "display_name": "Moderator",
-    },
-    "user": {
-        "color": "#2ECC71",
-        "bg": "#e8faf0",
-        "text_color": "#1B8A4A",
-        "initials": "U",
-        "display_name": "You",
-    },
-    "system": {
-        "color": "#8B8B8B",
-        "bg": "#f5f5f5",
-        "text_color": "#555555",
-        "initials": "S",
-        "display_name": "System",
-    },
-}
+SPEAKER_STYLES = get_speaker_styles()
 
 # ---------------------------------------------------------------------------
 # CSS Stylesheet — injected once at the top of each page render
@@ -536,18 +502,24 @@ def display_header():
 
 
 def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str, str]:
-    """Load model names from config for sidebar display."""
+    """Load model names from config for sidebar display.
+
+    Uses the philosopher registry so the list adapts automatically when
+    a new philosopher is added to ``philosophers.json``.
+    """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
-        return {
-            "Socrates": config.get("socrates", {}).get("model_name", "Unknown"),
-            "Confucius": config.get("confucius", {}).get("model_name", "Unknown"),
-            "Moderator": config.get("moderator", {}).get("model_name", "Unknown"),
-        }
+
+        from core.registry import load_registry
+        reg = load_registry()
+        info: Dict[str, str] = {}
+        for pid, pcfg in reg.items():
+            info[pcfg.display_name] = config.get(pid, {}).get("model_name", "Unknown")
+        return info
     except Exception as e:
         logger.warning(f"Could not load model info: {e}")
-        return {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
+        return {}
 
 
 def display_sidebar(model_info: Dict[str, str]):
@@ -566,9 +538,10 @@ def display_sidebar(model_info: Dict[str, str]):
             help="Select the conversation topic focus.",
         )
 
+        _philosopher_names = get_display_names()
         st.radio(
             "Starting Philosopher:",
-            ("Socrates", "Confucius"),
+            tuple(_philosopher_names),
             key="starting_philosopher",
             horizontal=True,
             index=0,
@@ -632,9 +605,8 @@ def display_sidebar(model_info: Dict[str, str]):
 
         # --- Model Info (compact) ---
         with st.expander("Model Info", expanded=False):
-            st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
-            st.markdown(f"**Confucius:** `{model_info.get('Confucius', 'Unknown')}`")
-            st.markdown(f"**Moderator:** `{model_info.get('Moderator', 'Unknown')}`")
+            for name, model in model_info.items():
+                st.markdown(f"**{name}:** `{model}`")
 
 
 def display_conversation(
@@ -679,7 +651,8 @@ def display_conversation(
             continue
 
         # --- Philosopher messages ---
-        if role_lower in ("socrates", "confucius"):
+        _philosopher_ids = set(get_philosopher_ids())
+        if role_lower in _philosopher_ids:
             philosopher_turn_count += 1
             round_num = (philosopher_turn_count - 1) // 2 + 1
 
