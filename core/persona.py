@@ -3,7 +3,7 @@
 import logging
 from typing import Optional, Any, Dict
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 
 from core.config import load_llm_config_for_persona
@@ -42,6 +42,7 @@ def create_chain(
     try:
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("user", "{input}"),
         ])
         chain = prompt_template | llm | StrOutputParser()

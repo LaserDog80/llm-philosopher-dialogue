@@ -8,9 +8,6 @@ import logging
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
-# Basic config might be inherited from root logger in app.py,
-# but explicit config ensures it works if run independently/imported early.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - AUTH - %(levelname)s - %(message)s')
 
 # --- Password Configuration (Internal to this module) ---
 

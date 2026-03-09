@@ -7,53 +7,14 @@ import logging
 import streamlit as st
 from typing import List, Dict, Any, Optional
 
+from core.registry import get_speaker_styles, get_display_names, get_philosopher_ids
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Speaker visual configuration — warm palette
+# Speaker visual configuration — loaded from philosophers.json registry
 # ---------------------------------------------------------------------------
-SPEAKER_STYLES = {
-    "socrates": {
-        "color": "#7C9A8E",       # muted sage
-        "bg": "#F5F1EB",          # warm parchment
-        "text_color": "#4A6B5D",
-        "initials": "S",
-        "display_name": "Socrates",
-        "border": "#8BAF9E",
-    },
-    "confucius": {
-        "color": "#C9956B",       # warm bronze
-        "bg": "#FBF5EE",          # light cream
-        "text_color": "#8B6914",
-        "initials": "C",
-        "display_name": "Confucius",
-        "border": "#D4A373",
-    },
-    "moderator": {
-        "color": "#A39B8F",       # warm gray
-        "bg": "#F3F0EB",
-        "text_color": "#6B6460",
-        "initials": "M",
-        "display_name": "Moderator",
-        "border": "#B5ADA3",
-    },
-    "user": {
-        "color": "#8B9D83",       # sage green
-        "bg": "#F0F4ED",
-        "text_color": "#5A6E52",
-        "initials": "U",
-        "display_name": "You",
-        "border": "#8B9D83",
-    },
-    "system": {
-        "color": "#A39B8F",
-        "bg": "#F3F0EB",
-        "text_color": "#6B6460",
-        "initials": "S",
-        "display_name": "System",
-        "border": "#B5ADA3",
-    },
-}
+SPEAKER_STYLES = get_speaker_styles()
 
 # ---------------------------------------------------------------------------
 # CSS Stylesheet — "Warm Study" theme
@@ -719,18 +680,24 @@ def display_header():
 
 
 def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str, str]:
-    """Load model names from config for display."""
+    """Load model names from config for display.
+
+    Uses the philosopher registry so the list adapts automatically when
+    a new philosopher is added to ``philosophers.json``.
+    """
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
-        return {
-            "Socrates": config.get("socrates", {}).get("model_name", "Unknown"),
-            "Confucius": config.get("confucius", {}).get("model_name", "Unknown"),
-            "Moderator": config.get("moderator", {}).get("model_name", "Unknown"),
-        }
+
+        from core.registry import load_registry
+        reg = load_registry()
+        info: Dict[str, str] = {}
+        for pid, pcfg in reg.items():
+            info[pcfg.display_name] = config.get(pid, {}).get("model_name", "Unknown")
+        return info
     except Exception as e:
         logger.warning(f"Could not load model info: {e}")
-        return {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
+        return {}
 
 
 def display_settings_popover(model_info: Dict[str, str]):
@@ -750,9 +717,10 @@ def display_settings_popover(model_info: Dict[str, str]):
             help="Select the conversation topic focus.",
         )
 
+        _philosopher_names = get_display_names()
         st.radio(
             "Starting Philosopher:",
-            ("Socrates", "Confucius"),
+            tuple(_philosopher_names),
             key="starting_philosopher",
             horizontal=True,
             index=0,
@@ -848,7 +816,8 @@ def display_conversation(
             continue
 
         # --- Philosopher messages ---
-        if role_lower in ("socrates", "confucius"):
+        _philosopher_ids = set(get_philosopher_ids())
+        if role_lower in _philosopher_ids:
             philosopher_turn_count += 1
             round_num = (philosopher_turn_count - 1) // 2 + 1
 

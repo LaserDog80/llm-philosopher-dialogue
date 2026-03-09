@@ -44,6 +44,7 @@ try:
     from direction import Director
     import gui
     from translator import translate_conversation
+    from core.validation import sanitize_input, validate_user_input
 except ImportError as e:
     st.error(f"Failed to import modules: {e}")
     logger.exception("Module import failed.")
@@ -79,6 +80,7 @@ _DEFAULTS: Dict[str, Any] = {
     "ai_summary_for_guidance_input": None,
     "next_speaker_for_guidance": None,
     "director_resume_state": None,
+    "translated_messages": None,
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
@@ -153,6 +155,7 @@ def _reset_conversation() -> None:
     st.session_state.ai_summary_for_guidance_input = None
     st.session_state.next_speaker_for_guidance = None
     st.session_state.director_resume_state = None
+    st.session_state.translated_messages = None
     st.session_state.pop("run_conversation_flag", None)
     st.session_state.pop("current_run_mode", None)
     _close_log()
@@ -291,7 +294,12 @@ def _resume_conversation(user_guidance: str) -> None:
 
 
 def _maybe_translate(mode: str) -> None:
-    """If translated output is selected, run the translator."""
+    """If translated output is selected, run the translator.
+
+    Stores the result in ``translated_messages`` so that the originals in
+    ``messages`` are never overwritten.  The display logic switches between
+    them based on the current output style selection.
+    """
     if st.session_state.get("output_style") != "Translated Text":
         return
     try:
@@ -304,7 +312,7 @@ def _maybe_translate(mode: str) -> None:
         translated = translate_conversation(original)
         thinking_placeholder.empty()
 
-        st.session_state.messages = [
+        st.session_state.translated_messages = [
             {"role": "system", "content": f"### Translated Conversation\n\n---\n\n{translated}"}
         ]
         log = st.session_state.get("log_content")
@@ -363,9 +371,16 @@ with col_logout:
         auth.logout()
         st.rerun()
 
-# Conversation display
+# Conversation display — show translated version when available and selected
+_display_messages = st.session_state.messages
+if (
+    st.session_state.get("output_style") == "Translated Text"
+    and st.session_state.get("translated_messages")
+):
+    _display_messages = st.session_state.translated_messages
+
 gui.display_conversation(
-    messages=st.session_state.messages,
+    messages=_display_messages,
     conversation_completed=st.session_state.get("conversation_completed", False),
     awaiting_guidance=st.session_state.get("awaiting_user_guidance", False),
     next_speaker_for_guidance=st.session_state.get("next_speaker_for_guidance", ""),
@@ -413,6 +428,12 @@ if prompt:
             st.rerun()
     else:
         # -- New conversation path --
+        prompt = sanitize_input(prompt)
+        is_valid, error_msg = validate_user_input(prompt)
+        if not is_valid:
+            st.warning(error_msg)
+            st.stop()
+
         logger.info(f"New prompt: '{prompt[:50]}...'")
         _reset_conversation()
 

@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Dict, Any
-from llm_loader import load_llm_config_for_persona
+from core.config import load_llm_config_for_persona
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
