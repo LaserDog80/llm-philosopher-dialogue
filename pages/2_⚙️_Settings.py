@@ -1,4 +1,5 @@
 # pages/2_Settings.py — Persona prompt override management.
+# UI: "Warm Study" theme.
 
 import os
 import sys
@@ -37,17 +38,22 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Inject CSS
+# Inject Warm Study CSS
 # ---------------------------------------------------------------------------
 gui.inject_chat_css()
 
 # ---------------------------------------------------------------------------
-# Page layout
+# Header
 # ---------------------------------------------------------------------------
 st.markdown(
-    '<div class="phd-header">'
-    '  <h1 class="phd-title">Prompt Settings</h1>'
-    '  <p class="phd-subtitle">View and override system prompts for each persona</p>'
+    '<div class="ws-header-bar">'
+    '  <div class="ws-header-left">'
+    '    <div class="ws-header-icon">&#x2699;</div>'
+    '    <div>'
+    '      <h1 class="ws-title">Prompt Settings</h1>'
+    '      <p class="ws-subtitle">View and override system prompts for each persona</p>'
+    '    </div>'
+    '  </div>'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -119,7 +125,7 @@ st.text_area(
 col_a, col_b, col_c = st.columns(3)
 
 with col_a:
-    if st.button("Save Override", key=f"save_{selection_key}"):
+    if st.button("Save Override", key=f"save_{selection_key}", icon=":material/save:"):
         current_text = st.session_state.get(text_area_key, "")
         st.session_state.prompt_overrides[selection_key] = current_text
         st.session_state.editor_content_state[selection_key] = current_text
@@ -127,7 +133,7 @@ with col_a:
         st.rerun()
 
 with col_b:
-    if st.button("Load Default", key=f"load_{selection_key}"):
+    if st.button("Load Default", key=f"load_{selection_key}", icon=":material/restart_alt:"):
         default_prompt = load_default_prompt_text(persona_key, mode_key)
         loaded = default_prompt if default_prompt is not None else FALLBACK_TEXT
         st.session_state.editor_content_state[selection_key] = loaded
@@ -136,7 +142,7 @@ with col_b:
 
 with col_c:
     has_override = selection_key in st.session_state.prompt_overrides
-    if st.button("Clear Override", key=f"clear_{selection_key}", disabled=not has_override):
+    if st.button("Clear Override", key=f"clear_{selection_key}", disabled=not has_override, icon=":material/delete:"):
         if has_override:
             del st.session_state.prompt_overrides[selection_key]
             default_prompt = load_default_prompt_text(persona_key, mode_key)
@@ -149,7 +155,7 @@ with col_c:
 # ---------------------------------------------------------------------------
 # Footer
 # ---------------------------------------------------------------------------
-st.divider()
+st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 st.caption("Changes persist for this session and affect both the main dialogue and Direct Chat.")
 
 with st.expander("View All Overrides"):

@@ -1,4 +1,5 @@
-# gui.py — Modern chat interface with custom HTML/CSS rendering.
+# gui.py — "Warm Study" modern chat interface with custom HTML/CSS rendering.
+# Design: warm neutrals, soft neumorphic depth, Manrope + Inter fonts.
 
 import html
 import json
@@ -9,110 +10,248 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Speaker visual configuration
+# Speaker visual configuration — warm palette
 # ---------------------------------------------------------------------------
 SPEAKER_STYLES = {
     "socrates": {
-        "color": "#5B8DEF",
-        "bg": "#f0f5ff",
-        "text_color": "#2D5FC4",
+        "color": "#7C9A8E",       # muted sage
+        "bg": "#F5F1EB",          # warm parchment
+        "text_color": "#4A6B5D",
         "initials": "S",
         "display_name": "Socrates",
+        "border": "#8BAF9E",
     },
     "confucius": {
-        "color": "#D4A03C",
-        "bg": "#fdf6e3",
+        "color": "#C9956B",       # warm bronze
+        "bg": "#FBF5EE",          # light cream
         "text_color": "#8B6914",
         "initials": "C",
         "display_name": "Confucius",
+        "border": "#D4A373",
     },
     "moderator": {
-        "color": "#8B8B8B",
-        "bg": "#f5f5f5",
-        "text_color": "#555555",
+        "color": "#A39B8F",       # warm gray
+        "bg": "#F3F0EB",
+        "text_color": "#6B6460",
         "initials": "M",
         "display_name": "Moderator",
+        "border": "#B5ADA3",
     },
     "user": {
-        "color": "#2ECC71",
-        "bg": "#e8faf0",
-        "text_color": "#1B8A4A",
+        "color": "#8B9D83",       # sage green
+        "bg": "#F0F4ED",
+        "text_color": "#5A6E52",
         "initials": "U",
         "display_name": "You",
+        "border": "#8B9D83",
     },
     "system": {
-        "color": "#8B8B8B",
-        "bg": "#f5f5f5",
-        "text_color": "#555555",
+        "color": "#A39B8F",
+        "bg": "#F3F0EB",
+        "text_color": "#6B6460",
         "initials": "S",
         "display_name": "System",
+        "border": "#B5ADA3",
     },
 }
 
 # ---------------------------------------------------------------------------
-# CSS Stylesheet — injected once at the top of each page render
+# CSS Stylesheet — "Warm Study" theme
 # ---------------------------------------------------------------------------
 CHAT_CSS = """
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-/* ===== Philosopher Dialogue Chat Styles ===== */
+/* ===== Warm Study — Global Overrides ===== */
 
-/* Container */
+/* Hide default Streamlit sidebar completely */
+section[data-testid="stSidebar"] {
+    display: none !important;
+}
+button[data-testid="stSidebarCollapsedControl"],
+button[data-testid="stSidebarNavCollapseIcon"] {
+    display: none !important;
+}
+
+/* Override Streamlit base fonts and background */
+.stApp {
+    background-color: #FAF8F3 !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Override all Streamlit text elements */
+.stApp .stMarkdown, .stApp p, .stApp span, .stApp label, .stApp div {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Style Streamlit buttons globally */
+.stApp button[kind="secondary"],
+.stApp .stButton > button {
+    font-family: 'Inter', sans-serif !important;
+    border-radius: 10px !important;
+    border: 1px solid #E0D9CF !important;
+    background: #FEFDFB !important;
+    color: #2D2620 !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 6px rgba(45,38,32,0.05) !important;
+}
+.stApp button[kind="secondary"]:hover,
+.stApp .stButton > button:hover {
+    background: #F5F1EB !important;
+    border-color: #C9B99A !important;
+    box-shadow: 0 4px 12px rgba(45,38,32,0.08) !important;
+}
+
+/* Style chat input */
+div[data-testid="stChatInput"] {
+    border-radius: 16px !important;
+    border: 1px solid #E0D9CF !important;
+    background: #FEFDFB !important;
+    box-shadow: 0 4px 16px rgba(45,38,32,0.06) !important;
+}
+div[data-testid="stChatInput"] textarea {
+    font-family: 'Inter', sans-serif !important;
+    color: #2D2620 !important;
+    font-size: 15px !important;
+}
+div[data-testid="stChatInput"] textarea::placeholder {
+    font-style: italic;
+    color: #B5ADA3 !important;
+}
+
+/* Style popover */
+div[data-testid="stPopover"] {
+    font-family: 'Inter', sans-serif !important;
+}
+div[data-testid="stPopoverBody"] {
+    background: #FEFDFB !important;
+    border: 1px solid #E0D9CF !important;
+    border-radius: 14px !important;
+    box-shadow: 0 8px 32px rgba(45,38,32,0.12) !important;
+    padding: 8px !important;
+}
+
+/* Style expander */
+.stApp details {
+    border: 1px solid #E0D9CF !important;
+    border-radius: 12px !important;
+    background: #FEFDFB !important;
+}
+
+/* Style radio buttons */
+.stApp .stRadio > label {
+    font-family: 'Inter', sans-serif !important;
+    color: #2D2620 !important;
+}
+
+/* Style checkboxes */
+.stApp .stCheckbox > label {
+    font-family: 'Inter', sans-serif !important;
+    color: #2D2620 !important;
+}
+
+/* Style number input */
+.stApp .stNumberInput input {
+    font-family: 'Inter', sans-serif !important;
+    border-radius: 10px !important;
+    border-color: #E0D9CF !important;
+}
+
+/* Style captions */
+.stApp .stCaption, .stApp caption {
+    font-family: 'Inter', sans-serif !important;
+    color: #A39B8F !important;
+}
+
+/* Dividers */
+.stApp hr {
+    border-color: #EDE8E0 !important;
+}
+
+/* ===== Top Header Bar ===== */
+.ws-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0 24px;
+    border-bottom: 1px solid #EDE8E0;
+    margin-bottom: 24px;
+}
+.ws-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.ws-header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #8B9D83 0%, #C9956B 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 4px 12px rgba(45,38,32,0.1);
+}
+.ws-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #2D2620;
+    margin: 0;
+    letter-spacing: -0.5px;
+}
+.ws-subtitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #A39B8F;
+    margin: 0;
+    font-weight: 400;
+}
+
+/* ===== Container ===== */
 .phd-container {
     max-width: 740px;
     margin: 0 auto;
     padding: 0;
 }
 
-/* App header */
-.phd-header {
-    text-align: center;
-    padding: 8px 0 20px;
-}
-.phd-title {
-    font-family: Georgia, Cambria, 'Times New Roman', serif;
-    font-size: 28px;
-    font-weight: 700;
-    color: #1a1a1a;
-    margin: 0 0 4px;
-    letter-spacing: -0.5px;
-}
-.phd-subtitle {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    color: #999;
-    margin: 0;
-}
-
-/* Topic Card — user's initial question */
+/* ===== Topic Card ===== */
 .phd-topic-card {
-    background: linear-gradient(135deg, #f8f9ff 0%, #fff8f0 100%);
-    border: 1px solid #e4e4e7;
-    border-radius: 14px;
-    padding: 20px 24px;
-    margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    background: #FEFDFB;
+    border: 1px solid #E0D9CF;
+    border-radius: 16px;
+    padding: 22px 26px;
+    margin-bottom: 28px;
+    box-shadow: 0 4px 16px rgba(45,38,32,0.05),
+                inset 0 1px 0 rgba(255,255,255,0.8);
 }
 .phd-topic-label {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: #999;
-    margin-bottom: 8px;
+    letter-spacing: 2px;
+    color: #A39B8F;
+    margin-bottom: 10px;
     font-weight: 600;
 }
 .phd-topic-content {
-    font-family: Georgia, Cambria, 'Times New Roman', serif;
+    font-family: 'Inter', sans-serif;
     font-size: 17px;
     line-height: 1.6;
-    color: #1a1a1a;
+    color: #2D2620;
+    font-weight: 400;
 }
 
-/* Round Separator */
+/* ===== Round Separator ===== */
 .phd-round-sep {
     display: flex;
     align-items: center;
-    margin: 24px 0 16px;
+    margin: 28px 0 18px;
     gap: 16px;
 }
 .phd-round-sep::before,
@@ -120,44 +259,44 @@ CHAT_CSS = """
     content: '';
     flex: 1;
     height: 1px;
-    background: #e0e0e0;
+    background: linear-gradient(to right, transparent, #D4CFC6, transparent);
 }
 .phd-round-text {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #b0b0b0;
+    letter-spacing: 2.5px;
+    color: #B5ADA3;
     white-space: nowrap;
-    font-weight: 500;
+    font-weight: 600;
 }
 
-/* Message Turn */
+/* ===== Message Turn ===== */
 .phd-turn {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 6px 0;
-    margin: 6px 0;
+    gap: 14px;
+    padding: 8px 0;
+    margin: 8px 0;
 }
 
-/* Avatar */
+/* ===== Avatar ===== */
 .phd-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 15px;
     color: white;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 3px 10px rgba(45,38,32,0.12);
 }
 
-/* Message Body */
+/* ===== Message Body ===== */
 .phd-msg-body {
     flex: 1;
     min-width: 0;
@@ -165,201 +304,313 @@ CHAT_CSS = """
 .phd-msg-header {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    margin-bottom: 3px;
+    gap: 10px;
+    margin-bottom: 6px;
 }
 .phd-speaker {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-weight: 600;
     font-size: 14px;
+    letter-spacing: -0.2px;
 }
 .phd-meta {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 11px;
-    color: #b0b0b0;
+    color: #B5ADA3;
+    font-weight: 400;
 }
 
-/* Message Card */
+/* ===== Message Card — neumorphic ===== */
 .phd-card {
-    padding: 12px 16px;
-    border-radius: 10px;
+    padding: 16px 20px;
+    border-radius: 14px;
     border-left: 3px solid transparent;
+    box-shadow: 0 4px 16px rgba(45,38,32,0.05),
+                inset 0 1px 0 rgba(255,255,255,0.6);
+    transition: box-shadow 0.2s ease;
+}
+.phd-card:hover {
+    box-shadow: 0 6px 20px rgba(45,38,32,0.08),
+                inset 0 1px 0 rgba(255,255,255,0.6);
 }
 .phd-content {
-    font-family: Georgia, Cambria, 'Times New Roman', serif;
-    font-size: 16px;
-    line-height: 1.75;
-    color: #1a1a1a;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    line-height: 1.8;
+    color: #2D2620;
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
 .phd-content p {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
 }
 .phd-content p:last-child {
     margin-bottom: 0;
 }
 
-/* Moderator Context (collapsible) */
+/* ===== Moderator Context (collapsible) ===== */
 .phd-mod-ctx {
-    margin: 4px 0 4px 48px;
-    border-radius: 6px;
+    margin: 6px 0 6px 54px;
+    border-radius: 10px;
 }
 .phd-mod-toggle {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
-    color: #aaa;
+    color: #A39B8F;
     cursor: pointer;
-    padding: 5px 10px;
-    border-radius: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
     list-style: none;
     display: flex;
     align-items: center;
     gap: 6px;
     user-select: none;
+    transition: all 0.2s ease;
 }
 .phd-mod-toggle::-webkit-details-marker { display: none; }
 .phd-mod-toggle:hover {
-    background: rgba(0,0,0,0.03);
-    color: #777;
+    background: rgba(45,38,32,0.04);
+    color: #6B6460;
 }
 .phd-mod-body {
-    padding: 8px 12px 10px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 10px 14px 12px;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
-    line-height: 1.5;
-    color: #666;
-    background: #f7f7f7;
-    border-radius: 0 0 6px 6px;
+    line-height: 1.6;
+    color: #6B6460;
+    background: #F5F1EB;
+    border-radius: 0 0 8px 8px;
 }
 .phd-mod-body strong {
-    color: #555;
+    color: #4A4540;
 }
 
-/* User Guidance */
+/* ===== User Guidance ===== */
 .phd-guidance {
-    margin: 4px 0 8px 48px;
-    padding: 8px 14px;
-    border-radius: 8px;
-    border-left: 3px solid #2ECC71;
-    background: #eafaf1;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 6px 0 10px 54px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border-left: 3px solid #8B9D83;
+    background: #F0F4ED;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
-    color: #1B8A4A;
-    line-height: 1.5;
+    color: #5A6E52;
+    line-height: 1.6;
+    box-shadow: 0 2px 8px rgba(45,38,32,0.04);
 }
 .phd-guidance-label {
+    font-family: 'Manrope', sans-serif;
     font-weight: 600;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #27ae60;
-    margin-bottom: 2px;
+    letter-spacing: 1.5px;
+    color: #7C9A8E;
+    margin-bottom: 4px;
 }
 
-/* Error message */
+/* ===== Error Message ===== */
 .phd-error {
-    margin: 4px 0 8px 48px;
-    padding: 8px 14px;
-    border-radius: 8px;
-    border-left: 3px solid #e74c3c;
-    background: #fdf0ef;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 6px 0 10px 54px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border-left: 3px solid #C9736B;
+    background: #FDF3F1;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
-    color: #c0392b;
+    color: #A0453B;
 }
 
-/* Empty State */
+/* ===== Empty State ===== */
 .phd-empty {
     text-align: center;
-    padding: 60px 20px;
+    padding: 72px 24px;
 }
 .phd-empty-icon {
     font-size: 48px;
     margin-bottom: 16px;
-    opacity: 0.4;
+    opacity: 0.35;
 }
 .phd-empty-text {
-    font-family: Georgia, Cambria, serif;
-    font-size: 18px;
-    color: #888;
-    margin-bottom: 8px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 20px;
+    color: #6B6460;
+    margin-bottom: 10px;
+    font-weight: 600;
 }
 .phd-empty-hint {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 14px;
-    color: #bbb;
+    color: #B5ADA3;
+    font-weight: 400;
 }
 
-/* Completion Banner */
+/* ===== Completion Banner ===== */
 .phd-complete {
     text-align: center;
-    padding: 14px 20px;
-    margin: 20px 0 8px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #f0f5ff 0%, #fdf6e3 100%);
-    border: 1px solid #e4e4e7;
+    padding: 18px 24px;
+    margin: 24px 0 8px;
+    border-radius: 14px;
+    background: #FEFDFB;
+    border: 1px solid #E0D9CF;
+    box-shadow: 0 4px 16px rgba(45,38,32,0.05);
 }
 .phd-complete-text {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 13px;
-    color: #777;
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    color: #6B6460;
+    font-weight: 500;
 }
 
-/* Waiting indicator */
+/* ===== Progress Bar ===== */
+.ws-progress-container {
+    margin: 16px 0 8px 54px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: #FEFDFB;
+    border: 1px solid #E0D9CF;
+    box-shadow: 0 2px 10px rgba(45,38,32,0.04);
+}
+.ws-progress-status {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #6B6460;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ws-progress-track {
+    width: 100%;
+    height: 4px;
+    background: #EDE8E0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+.ws-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #8B9D83 0%, #C9956B 100%);
+    transition: width 0.5s ease;
+}
+.ws-progress-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: #B5ADA3;
+    text-align: right;
+}
+
+/* ===== Waiting / Thinking Indicator ===== */
 .phd-waiting {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    margin: 12px 0 4px 48px;
-    border-radius: 10px;
-    border-left: 3px solid #2ECC71;
-    background: #eafaf1;
+    gap: 12px;
+    padding: 14px 18px;
+    margin: 14px 0 6px 54px;
+    border-radius: 12px;
+    border-left: 3px solid #8B9D83;
+    background: #F5F1EB;
+    box-shadow: 0 2px 10px rgba(45,38,32,0.04);
 }
 .phd-waiting-label {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     font-style: italic;
-    color: #27ae60;
+    color: #7C9A8E;
+    font-weight: 500;
 }
+
+/* Wave dots animation */
 .phd-dots {
     display: inline-flex;
-    gap: 3px;
+    gap: 4px;
+    align-items: center;
 }
 .phd-dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: #27ae60;
-    animation: phd-pulse 1.4s infinite ease-in-out both;
+    background: #8B9D83;
+    animation: ws-wave 1.4s infinite ease-in-out both;
 }
 .phd-dot:nth-child(1) { animation-delay: -0.32s; }
 .phd-dot:nth-child(2) { animation-delay: -0.16s; }
 .phd-dot:nth-child(3) { animation-delay: 0s; }
-@keyframes phd-pulse {
-    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-    40% { transform: scale(1); opacity: 1; }
+@keyframes ws-wave {
+    0%, 80%, 100% {
+        transform: translateY(0) scale(0.8);
+        opacity: 0.4;
+    }
+    40% {
+        transform: translateY(-4px) scale(1);
+        opacity: 1;
+    }
 }
 
-/* Responsive */
+/* ===== Thinking Indicator (used during LLM processing) ===== */
+.ws-thinking {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    margin: 14px 0 6px 0;
+    border-radius: 12px;
+    background: #F5F1EB;
+    border: 1px solid #E0D9CF;
+    box-shadow: 0 2px 10px rgba(45,38,32,0.04);
+}
+.ws-thinking-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: #6B6460;
+    font-weight: 500;
+}
+.ws-thinking-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+.ws-thinking-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8B9D83, #C9956B);
+    animation: ws-wave 1.4s infinite ease-in-out both;
+}
+.ws-thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+.ws-thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+.ws-thinking-dot:nth-child(3) { animation-delay: 0s; }
+
+/* ===== Settings Panel Styling ===== */
+.ws-settings-section {
+    font-family: 'Manrope', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #A39B8F;
+    margin: 16px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #EDE8E0;
+}
+
+/* ===== Responsive ===== */
 @media (max-width: 768px) {
-    .phd-turn { gap: 8px; }
-    .phd-avatar { width: 30px; height: 30px; font-size: 12px; }
-    .phd-content { font-size: 15px; line-height: 1.6; }
-    .phd-topic-card { padding: 16px; }
-    .phd-mod-ctx, .phd-guidance, .phd-error, .phd-waiting { margin-left: 38px; }
+    .phd-turn { gap: 10px; }
+    .phd-avatar { width: 34px; height: 34px; font-size: 13px; border-radius: 10px; }
+    .phd-content { font-size: 14px; line-height: 1.7; }
+    .phd-topic-card { padding: 18px 20px; }
+    .phd-mod-ctx, .phd-guidance, .phd-error, .phd-waiting,
+    .ws-progress-container { margin-left: 44px; }
+    .ws-title { font-size: 20px; }
 }
 @media (max-width: 480px) {
-    .phd-avatar { width: 26px; height: 26px; font-size: 11px; }
-    .phd-content { font-size: 14px; }
-    .phd-card { padding: 10px 12px; }
-    .phd-mod-ctx, .phd-guidance, .phd-error, .phd-waiting { margin-left: 34px; }
-}
-
-/* Override Streamlit defaults for cleaner look */
-div[data-testid="stChatInput"] textarea::placeholder {
-    font-style: italic;
+    .phd-avatar { width: 28px; height: 28px; font-size: 11px; border-radius: 8px; }
+    .phd-content { font-size: 13px; }
+    .phd-card { padding: 12px 14px; }
+    .phd-mod-ctx, .phd-guidance, .phd-error, .phd-waiting,
+    .ws-progress-container { margin-left: 38px; }
+    .ws-title { font-size: 18px; }
 }
 </style>
 """
@@ -404,6 +655,7 @@ def _render_message(role: str, content: str, round_num: int = 0) -> str:
     """Render a philosopher or user message as a chat turn."""
     style = _get_style(role)
     meta = f"Round {round_num}" if round_num > 0 else ""
+    border_color = style.get("border", style["color"])
     return (
         f'<div class="phd-turn">'
         f'  <div class="phd-avatar" style="background:{style["color"]};">{style["initials"]}</div>'
@@ -412,7 +664,7 @@ def _render_message(role: str, content: str, round_num: int = 0) -> str:
         f'      <span class="phd-speaker" style="color:{style["text_color"]};">{style["display_name"]}</span>'
         f'      <span class="phd-meta">{meta}</span>'
         f'    </div>'
-        f'    <div class="phd-card" style="border-left-color:{style["color"]}; background:{style["bg"]};">'
+        f'    <div class="phd-card" style="border-left-color:{border_color}; background:{style["bg"]};">'
         f'      <div class="phd-content">{_esc(content)}</div>'
         f'    </div>'
         f'  </div>'
@@ -422,7 +674,6 @@ def _render_message(role: str, content: str, round_num: int = 0) -> str:
 
 def _render_moderator_context(content: str) -> str:
     """Render moderator context as a collapsible details element."""
-    # Parse SUMMARY and GUIDANCE from the content
     lines = content.strip().splitlines()
     summary = ""
     guidance = ""
@@ -432,7 +683,6 @@ def _render_moderator_context(content: str) -> str:
         stripped = line.strip()
         upper = stripped.upper()
         if upper.startswith("MODERATOR CONTEXT"):
-            # Extract target from "MODERATOR CONTEXT (for Confucius):"
             if "(" in stripped and ")" in stripped:
                 target = stripped[stripped.index("(") + 1:stripped.index(")")]
         elif upper.startswith("SUMMARY:"):
@@ -461,7 +711,6 @@ def _render_moderator_context(content: str) -> str:
 
 def _render_user_guidance(content: str) -> str:
     """Render user guidance message."""
-    # Strip the "USER GUIDANCE FOR <name>:" prefix if present
     display = content
     if ":" in content and content.strip().upper().startswith("USER GUIDANCE"):
         display = content.split(":", 1)[1].strip()
@@ -485,7 +734,7 @@ def _render_empty_state() -> str:
     """Render the empty conversation state."""
     return (
         '<div class="phd-empty">'
-        '  <div class="phd-empty-icon">&#x1F4AC;</div>'
+        '  <div class="phd-empty-icon">&#x1F3DB;</div>'
         '  <div class="phd-empty-text">Begin a philosophical dialogue</div>'
         '  <div class="phd-empty-hint">Enter a question below to start the conversation between Socrates and Confucius</div>'
         '</div>'
@@ -502,15 +751,51 @@ def _render_completion_banner(mode: str, num_rounds: int) -> str:
 
 
 def _render_waiting_indicator(next_speaker: str) -> str:
-    """Render the waiting-for-guidance indicator."""
+    """Render the waiting-for-guidance indicator with wave dots."""
     return (
         '<div class="phd-waiting">'
-        f'  <span class="phd-waiting-label">Awaiting your guidance for {_esc(next_speaker)}</span>'
         '  <span class="phd-dots">'
         '    <span class="phd-dot"></span>'
         '    <span class="phd-dot"></span>'
         '    <span class="phd-dot"></span>'
         '  </span>'
+        f'  <span class="phd-waiting-label">Awaiting your guidance for {_esc(next_speaker)}</span>'
+        '</div>'
+    )
+
+
+def _render_progress_bar(current_round: int, total_rounds: int, speaker: str = "") -> str:
+    """Render a round-aware progress bar with speaker status."""
+    pct = min(100, int((current_round / max(total_rounds, 1)) * 100))
+    speaker_text = f"{_esc(speaker)} is reflecting..." if speaker else "Processing..."
+    return (
+        '<div class="ws-progress-container">'
+        f'  <div class="ws-progress-status">'
+        f'    <span class="phd-dots">'
+        f'      <span class="phd-dot"></span>'
+        f'      <span class="phd-dot"></span>'
+        f'      <span class="phd-dot"></span>'
+        f'    </span>'
+        f'    {speaker_text}'
+        f'  </div>'
+        f'  <div class="ws-progress-track">'
+        f'    <div class="ws-progress-fill" style="width:{pct}%;"></div>'
+        f'  </div>'
+        f'  <div class="ws-progress-label">Round {current_round} of {total_rounds}</div>'
+        '</div>'
+    )
+
+
+def render_thinking_indicator(text: str = "Philosophers are conferring...") -> str:
+    """Render an inline thinking/loading indicator."""
+    return (
+        '<div class="ws-thinking">'
+        '  <span class="ws-thinking-dots">'
+        '    <span class="ws-thinking-dot"></span>'
+        '    <span class="ws-thinking-dot"></span>'
+        '    <span class="ws-thinking-dot"></span>'
+        '  </span>'
+        f'  <span class="ws-thinking-label">{_esc(text)}</span>'
         '</div>'
     )
 
@@ -525,18 +810,23 @@ def inject_chat_css():
 
 
 def display_header():
-    """Render the application header."""
+    """Render the Warm Study application header."""
     st.markdown(
-        '<div class="phd-header">'
-        '  <h1 class="phd-title">Philosopher Dialogue</h1>'
-        '  <p class="phd-subtitle">A moderated conversation between Socrates and Confucius</p>'
+        '<div class="ws-header-bar">'
+        '  <div class="ws-header-left">'
+        '    <div class="ws-header-icon">&#x1F3DB;</div>'
+        '    <div>'
+        '      <h1 class="ws-title">Philosopher Dialogue</h1>'
+        '      <p class="ws-subtitle">A moderated conversation between Socrates and Confucius</p>'
+        '    </div>'
+        '  </div>'
         '</div>',
         unsafe_allow_html=True,
     )
 
 
 def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str, str]:
-    """Load model names from config for sidebar display."""
+    """Load model names from config for display."""
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
@@ -550,14 +840,15 @@ def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str
         return {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
 
 
-def display_sidebar(model_info: Dict[str, str]):
-    """Render the sidebar configuration panel."""
-    with st.sidebar:
-        st.header("Configuration")
+def display_settings_popover(model_info: Dict[str, str]):
+    """Render the settings as a popover triggered by a gear button."""
 
-        # --- Conversation Setup ---
+    with st.popover("Settings", icon=":material/settings:", use_container_width=False):
+        # --- Conversation Section ---
+        st.markdown('<div class="ws-settings-section">Conversation</div>', unsafe_allow_html=True)
+
         st.radio(
-            "Conversation Mode:",
+            "Mode:",
             options=["Philosophy", "Bio"],
             format_func=lambda x: "Philosophical" if x == "Philosophy" else "Biographical",
             key="conversation_mode",
@@ -583,16 +874,16 @@ def display_sidebar(model_info: Dict[str, str]):
             help="One round = one response from each philosopher.",
         )
 
-        st.divider()
+        # --- Moderation Section ---
+        st.markdown('<div class="ws-settings-section">Moderation</div>', unsafe_allow_html=True)
 
-        # --- Moderation ---
         st.radio(
             "Moderator Control:",
             options=["AI Moderator", "User as Moderator (Guidance)"],
             key="moderator_control_mode",
             index=0,
             horizontal=True,
-            help="Choose who provides guidance: AI or You. AI always provides summary.",
+            help="Choose who provides guidance: AI or You.",
         )
 
         st.checkbox(
@@ -602,39 +893,34 @@ def display_sidebar(model_info: Dict[str, str]):
             help="Philosophers respond directly without moderator.",
         )
 
-        st.divider()
+        # --- Display Section ---
+        st.markdown('<div class="ws-settings-section">Display</div>', unsafe_allow_html=True)
 
-        # --- Display ---
         st.radio(
             "Output Style:",
             ("Original Text", "Translated Text"),
             key="output_style",
             horizontal=True,
             index=0,
-            help="View original dialogue or a casual translation (applied after completion).",
+            help="View original dialogue or a casual translation.",
         )
 
         st.checkbox(
             "Show Moderator Context",
             key="show_moderator_cb",
             value=st.session_state.get("show_moderator_cb", False),
-            help="Show/hide the moderator's summary and guidance blocks.",
         )
 
         st.checkbox(
             "Show Internal Monologue",
             key="show_monologue_cb",
             value=st.session_state.get("show_monologue_cb", False),
-            help="Show/hide the LLM's <think> blocks.",
         )
 
-        st.divider()
-
-        # --- Model Info (compact) ---
-        with st.expander("Model Info", expanded=False):
-            st.markdown(f"**Socrates:** `{model_info.get('Socrates', 'Unknown')}`")
-            st.markdown(f"**Confucius:** `{model_info.get('Confucius', 'Unknown')}`")
-            st.markdown(f"**Moderator:** `{model_info.get('Moderator', 'Unknown')}`")
+        # --- Model Info ---
+        st.markdown('<div class="ws-settings-section">Models</div>', unsafe_allow_html=True)
+        for name, model in model_info.items():
+            st.caption(f"**{name}:** {model}")
 
 
 def display_conversation(
@@ -646,17 +932,7 @@ def display_conversation(
     num_rounds: int = 0,
     mode: str = "",
 ):
-    """
-    Render the full conversation using custom HTML.
-
-    This replaces the old st.chat_message approach with a modern
-    turn-by-turn chat interface featuring:
-    - Color-coded speakers with avatar circles
-    - Left-border accent on message cards
-    - Round separators
-    - Collapsible moderator context
-    - Serif typography for dialogue
-    """
+    """Render the full conversation using custom HTML."""
     if show_moderator_ctx is None:
         show_moderator_ctx = st.session_state.get("show_moderator_cb", False)
 
@@ -673,7 +949,7 @@ def display_conversation(
         content = msg.get("content", "")
         role_lower = role.lower().strip()
 
-        # --- User message → topic card ---
+        # --- User message -> topic card ---
         if role_lower == "user":
             html_parts.append(_render_topic_card(content))
             continue
@@ -683,7 +959,6 @@ def display_conversation(
             philosopher_turn_count += 1
             round_num = (philosopher_turn_count - 1) // 2 + 1
 
-            # Insert round separator at the start of each new round
             if round_num != current_round:
                 current_round = round_num
                 html_parts.append(_render_round_separator(round_num))
@@ -691,42 +966,37 @@ def display_conversation(
             html_parts.append(_render_message(role, content, round_num))
             continue
 
-        # --- System messages (moderator context, guidance, errors, translation) ---
+        # --- System messages ---
         if role_lower == "system":
             content_str = str(content).strip() if content else ""
             content_upper = content_str.upper()
 
-            # Moderator context
             if content_upper.startswith("MODERATOR CONTEXT"):
                 if show_moderator_ctx:
                     html_parts.append(_render_moderator_context(content_str))
                 continue
 
-            # User guidance
             if content_upper.startswith("USER GUIDANCE FOR") or content_upper.startswith("SYSTEM: USER OPTED"):
                 if show_moderator_ctx:
                     html_parts.append(_render_user_guidance(content_str))
                 continue
 
-            # Error messages
             if content_upper.startswith("ERROR:"):
                 html_parts.append(_render_error(content_str))
                 continue
 
-            # Translated conversation or other system messages
             if content_str:
-                # For translated text or general system messages,
-                # render as a simple card
                 html_parts.append(
-                    f'<div style="padding:12px 16px; margin:8px 0; '
-                    f'border-radius:10px; background:#fafafa; '
-                    f'font-family:Georgia,Cambria,serif; font-size:16px; '
-                    f'line-height:1.75; color:#1a1a1a;">'
+                    f'<div style="padding:14px 18px; margin:10px 0; '
+                    f'border-radius:14px; background:#FEFDFB; border:1px solid #E0D9CF; '
+                    f'font-family:Inter,sans-serif; font-size:15px; '
+                    f'line-height:1.8; color:#2D2620; '
+                    f'box-shadow:0 2px 8px rgba(45,38,32,0.04);">'
                     f'{_esc(content_str)}</div>'
                 )
             continue
 
-        # --- Fallback: unknown role (treat as philosopher-like) ---
+        # --- Fallback ---
         html_parts.append(_render_message(role, content))
 
     # --- Waiting indicator ---

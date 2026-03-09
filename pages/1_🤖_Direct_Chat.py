@@ -1,4 +1,5 @@
 # pages/1_Direct_Chat.py — Debug page for chatting with individual personas.
+# UI: "Warm Study" theme — clean chat interface with popover settings.
 
 import os
 import sys
@@ -42,7 +43,7 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Inject chat CSS for consistent styling
+# Inject Warm Study CSS
 # ---------------------------------------------------------------------------
 gui.inject_chat_css()
 
@@ -53,39 +54,62 @@ PERSONAS = ["Socrates", "Confucius", "Moderator"]
 MODES = ["Philosophy", "Bio"]
 
 # ---------------------------------------------------------------------------
-# Page Layout
+# Header
 # ---------------------------------------------------------------------------
 st.markdown(
-    '<div class="phd-header">'
-    '  <h1 class="phd-title">Direct AI Chat</h1>'
-    '  <p class="phd-subtitle">Chat directly with an individual philosopher persona</p>'
+    '<div class="ws-header-bar">'
+    '  <div class="ws-header-left">'
+    '    <div class="ws-header-icon">&#x1F916;</div>'
+    '    <div>'
+    '      <h1 class="ws-title">Direct AI Chat</h1>'
+    '      <p class="ws-subtitle">Chat directly with an individual philosopher persona</p>'
+    '    </div>'
+    '  </div>'
     '</div>',
     unsafe_allow_html=True,
 )
 
 # ---------------------------------------------------------------------------
-# Controls
+# Controls — in a popover for clean layout
 # ---------------------------------------------------------------------------
-col1, col2 = st.columns(2)
-with col1:
-    selected_persona = st.radio(
-        "Persona:",
-        PERSONAS,
-        key="debug_chat_persona",
-        horizontal=True,
-    )
-with col2:
-    selected_mode = st.radio(
-        "Mode:",
-        MODES,
-        key="debug_local_conversation_mode",
-        horizontal=True,
-    )
+col_settings, col_spacer, col_clear = st.columns([1.5, 5, 1.5])
 
+with col_settings:
+    with st.popover("Settings", icon=":material/settings:", use_container_width=False):
+        st.markdown('<div class="ws-settings-section">Persona</div>', unsafe_allow_html=True)
+        selected_persona = st.radio(
+            "Persona:",
+            PERSONAS,
+            key="debug_chat_persona",
+            horizontal=True,
+        )
+        st.markdown('<div class="ws-settings-section">Mode</div>', unsafe_allow_html=True)
+        selected_mode = st.radio(
+            "Mode:",
+            MODES,
+            key="debug_local_conversation_mode",
+            horizontal=True,
+        )
+        st.checkbox("Show Thinking", key="debug_show_thinking", value=False)
+
+        with st.expander("View System Prompt", expanded=False):
+            prompt_text = st.session_state.get("debug_system_prompt", "")
+            if prompt_text:
+                _sp_key = f"sp_{selected_persona.lower()}_{selected_mode.lower()}"
+                st.text_area("System Prompt:", value=prompt_text, height=200, disabled=True, key=_sp_key)
+            else:
+                st.caption("No prompt loaded.")
+
+# Resolve keys from session state (set by widgets inside popover)
+selected_persona = st.session_state.get("debug_chat_persona", "Socrates")
+selected_mode = st.session_state.get("debug_local_conversation_mode", "Philosophy")
 persona_key = selected_persona.lower()
 config_key = f"{persona_key}_{selected_mode.lower()}"
 
-show_thinking = st.checkbox("Show Thinking", key="debug_show_thinking", value=False)
+with col_clear:
+    pass  # Clear button placed after history is resolved
+
+st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # State initialization
@@ -132,24 +156,11 @@ except Exception as e:
     st.session_state.debug_chain = None
 
 # ---------------------------------------------------------------------------
-# System prompt viewer
-# ---------------------------------------------------------------------------
-with st.expander("View System Prompt", expanded=False):
-    prompt_text = st.session_state.get("debug_system_prompt", "")
-    if prompt_text:
-        st.text_area("System Prompt:", value=prompt_text, height=200, disabled=True, key=f"sp_{config_key}")
-    else:
-        st.caption("No prompt loaded.")
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Chat display — using the new styled HTML
+# Chat display — Warm Study styled HTML
 # ---------------------------------------------------------------------------
 st.session_state.debug_messages.setdefault(config_key, [])
 history = st.session_state.debug_messages[config_key]
 
-# Get the speaker style for the AI persona
 style = gui.SPEAKER_STYLES.get(persona_key, gui.SPEAKER_STYLES["system"])
 
 if not history:
@@ -177,7 +188,7 @@ else:
                 f'    <div class="phd-msg-header">'
                 f'      <span class="phd-speaker" style="color:{user_style["text_color"]};">You</span>'
                 f'    </div>'
-                f'    <div class="phd-card" style="border-left-color:{user_style["color"]}; background:{user_style["bg"]};">'
+                f'    <div class="phd-card" style="border-left-color:{user_style.get("border", user_style["color"])}; background:{user_style["bg"]};">'
                 f'      <div class="phd-content">{gui._esc(content)}</div>'
                 f'    </div>'
                 f'  </div>'
@@ -191,15 +202,15 @@ else:
                 f'    <div class="phd-msg-header">'
                 f'      <span class="phd-speaker" style="color:{style["text_color"]};">{style["display_name"]}</span>'
                 f'    </div>'
-                f'    <div class="phd-card" style="border-left-color:{style["color"]}; background:{style["bg"]};">'
+                f'    <div class="phd-card" style="border-left-color:{style.get("border", style["color"])}; background:{style["bg"]};">'
                 f'      <div class="phd-content">{gui._esc(content)}</div>'
                 f'    </div>'
                 f'  </div>'
                 f'</div>'
             )
-            if thinking and show_thinking:
+            if thinking and st.session_state.get("debug_show_thinking", False):
                 html_parts.append(
-                    f'<div class="phd-mod-ctx" style="margin-left:48px;">'
+                    f'<div class="phd-mod-ctx" style="margin-left:54px;">'
                     f'  <details>'
                     f'    <summary class="phd-mod-toggle" style="color:{style["text_color"]};">Thinking</summary>'
                     f'    <div class="phd-mod-body">{gui._esc(thinking)}</div>'
@@ -217,12 +228,10 @@ if prompt := st.chat_input(f"Ask {selected_persona} a question..."):
     if not st.session_state.debug_chain:
         st.error("Chain not loaded. Cannot chat.")
     else:
-        # Store user message
         st.session_state.debug_messages[config_key].append(
             {"type": "human", "content": prompt, "thinking": None}
         )
 
-        # Build history for the chain
         history_for_chain: List[BaseMessage] = []
         for msg in st.session_state.debug_messages[config_key][:-1]:
             if msg["type"] == "human":
@@ -231,11 +240,17 @@ if prompt := st.chat_input(f"Ask {selected_persona} a question..."):
                 history_for_chain.append(AIMessage(content=msg["content"]))
 
         try:
-            with st.spinner(f"{selected_persona} is thinking..."):
-                raw = st.session_state.debug_chain.invoke({
-                    "input": prompt,
-                    "chat_history": history_for_chain,
-                })
+            thinking_placeholder = st.empty()
+            thinking_placeholder.markdown(
+                gui.render_thinking_indicator(f"{selected_persona} is reflecting..."),
+                unsafe_allow_html=True,
+            )
+            raw = st.session_state.debug_chain.invoke({
+                "input": prompt,
+                "chat_history": history_for_chain,
+            })
+            thinking_placeholder.empty()
+
             thinking_text = extract_think_block(raw)
             cleaned = clean_response(raw)
             st.session_state.debug_messages[config_key].append(
@@ -245,31 +260,33 @@ if prompt := st.chat_input(f"Ask {selected_persona} a question..."):
         except Exception as e:
             st.error(f"Error: {e}")
             logger.exception(f"Chain invocation failed for {config_key}")
-            # Remove the user message we just added
             if st.session_state.debug_messages.get(config_key):
                 st.session_state.debug_messages[config_key].pop()
             st.rerun()
 
 # ---------------------------------------------------------------------------
-# Transcript and controls
+# Bottom controls — clean minimal
 # ---------------------------------------------------------------------------
-st.divider()
+st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-with st.expander("View Full Transcript", expanded=False):
-    if history:
-        lines = []
-        for msg in history:
-            if msg["type"] == "human":
-                lines.append(f"YOU: {msg['content']}")
-            elif msg["type"] == "ai":
-                if msg.get("thinking") and show_thinking:
-                    lines.append(f"  [Thinking]: {msg['thinking']}")
-                lines.append(f"{selected_persona.upper()}: {msg['content']}")
-            lines.append("-" * 30)
-        st.text_area("Transcript:", value="\n".join(lines), height=300, disabled=True, key=f"transcript_{config_key}")
-    else:
-        st.caption("No messages yet.")
+col_a, col_b = st.columns([1, 1])
+with col_a:
+    with st.expander("View Full Transcript", expanded=False):
+        if history:
+            lines = []
+            for msg in history:
+                if msg["type"] == "human":
+                    lines.append(f"YOU: {msg['content']}")
+                elif msg["type"] == "ai":
+                    if msg.get("thinking") and st.session_state.get("debug_show_thinking", False):
+                        lines.append(f"  [Thinking]: {msg['thinking']}")
+                    lines.append(f"{selected_persona.upper()}: {msg['content']}")
+                lines.append("-" * 30)
+            st.text_area("Transcript:", value="\n".join(lines), height=300, disabled=True, key=f"transcript_{config_key}")
+        else:
+            st.caption("No messages yet.")
 
-if st.button("Clear Chat History", disabled=not history):
-    st.session_state.debug_messages[config_key] = []
-    st.rerun()
+with col_b:
+    if st.button("Clear Chat History", disabled=not history, icon=":material/delete:"):
+        st.session_state.debug_messages[config_key] = []
+        st.rerun()

@@ -1,4 +1,5 @@
 # app.py — Streamlined main application entry point.
+# UI: "Warm Study" design — clean main view with popover settings.
 
 import io
 import datetime
@@ -180,18 +181,26 @@ def _run_initial_conversation(prompt: str) -> None:
     final_status = "Error: conversation did not complete."
     try:
         st.session_state.current_status = f"Philosophers conferring ({mode} mode)..."
-        with st.spinner(f"Philosophers conferring ({mode} mode)..."):
-            gen_msgs, final_status, success, resume_state, guidance_data = (
-                director.run_conversation_streamlit(
-                    initial_input=prompt,
-                    num_rounds=num_rounds,
-                    starting_philosopher=starter,
-                    run_moderated=run_moderated,
-                    mode=mode,
-                    moderator_type=mod_type,
-                )
+
+        # Show warm-themed thinking indicator instead of default spinner
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator(f"Philosophers conferring ({mode} mode)..."),
+            unsafe_allow_html=True,
+        )
+
+        gen_msgs, final_status, success, resume_state, guidance_data = (
+            director.run_conversation_streamlit(
+                initial_input=prompt,
+                num_rounds=num_rounds,
+                starting_philosopher=starter,
+                run_moderated=run_moderated,
+                mode=mode,
+                moderator_type=mod_type,
             )
-            logger.info(f"Director finished. success={success}, status={final_status}")
+        )
+        logger.info(f"Director finished. success={success}, status={final_status}")
+        thinking_placeholder.empty()
 
         st.session_state.current_status = final_status
         st.session_state.messages.extend(gen_msgs)
@@ -235,11 +244,17 @@ def _resume_conversation(user_guidance: str) -> None:
 
     final_status = "Error: resume did not complete."
     try:
-        with st.spinner(f"Philosophers conferring ({mode} mode) with your guidance..."):
-            gen_msgs, final_status, success, new_resume, guidance_data = (
-                director.resume_conversation_streamlit(resume_state, user_provided_guidance=user_guidance)
-            )
-            logger.info(f"Director resumed. success={success}, status={final_status}")
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator(f"Philosophers conferring ({mode} mode) with your guidance..."),
+            unsafe_allow_html=True,
+        )
+
+        gen_msgs, final_status, success, new_resume, guidance_data = (
+            director.resume_conversation_streamlit(resume_state, user_provided_guidance=user_guidance)
+        )
+        logger.info(f"Director resumed. success={success}, status={final_status}")
+        thinking_placeholder.empty()
 
         st.session_state.current_status = final_status
         st.session_state.messages.extend(gen_msgs)
@@ -280,9 +295,15 @@ def _maybe_translate(mode: str) -> None:
     if st.session_state.get("output_style") != "Translated Text":
         return
     try:
-        with st.spinner("Translating conversation..."):
-            original = st.session_state.messages[:]
-            translated = translate_conversation(original)
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator("Translating conversation..."),
+            unsafe_allow_html=True,
+        )
+        original = st.session_state.messages[:]
+        translated = translate_conversation(original)
+        thinking_placeholder.empty()
+
         st.session_state.messages = [
             {"role": "system", "content": f"### Translated Conversation\n\n---\n\n{translated}"}
         ]
@@ -296,22 +317,54 @@ def _maybe_translate(mode: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# UI Rendering
+# UI Rendering — Warm Study Layout
 # ---------------------------------------------------------------------------
 
-# Inject CSS once
+# Inject CSS (includes sidebar hide, fonts, warm theme)
 gui.inject_chat_css()
 
-# Sidebar
+# Header bar
+gui.display_header()
+
+# Top action bar: Settings popover + action buttons
 try:
     model_info = gui.get_model_info_from_config()
-    gui.display_sidebar(model_info)
 except Exception as e:
-    st.error(f"Sidebar error: {e}")
-    logger.exception("Sidebar rendering failed.")
+    model_info = {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
+    logger.exception("Model info load failed.")
 
-# Header
-gui.display_header()
+# Layout: Settings gear + action buttons in a clean row
+col_settings, col_spacer, col_reset, col_download, col_logout = st.columns([1.5, 3, 1.2, 1.5, 0.8])
+
+with col_settings:
+    gui.display_settings_popover(model_info)
+
+with col_reset:
+    if st.button("Clear & Reset", icon=":material/refresh:"):
+        _reset_conversation()
+        st.rerun()
+
+with col_download:
+    if (
+        st.session_state.get("conversation_completed")
+        and isinstance(st.session_state.get("log_content"), list)
+        and st.session_state["log_content"]
+    ):
+        log_text = "\n".join(st.session_state["log_content"])
+        st.download_button(
+            label="Download Log",
+            data=log_text.encode("utf-8"),
+            file_name=st.session_state.get("current_log_filename", "conversation_log.txt"),
+            mime="text/plain",
+            icon=":material/download:",
+        )
+
+with col_logout:
+    if st.button("Logout", icon=":material/logout:"):
+        auth.logout()
+        st.rerun()
+
+st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # Conversation display
 gui.display_conversation(
@@ -326,7 +379,7 @@ gui.display_conversation(
 # Internal monologue expander
 gui.display_monologue(st.session_state.messages)
 
-# Status line
+# Status line (minimal)
 ts = datetime.datetime.now().strftime("%H:%M:%S")
 status_text = st.session_state.get("current_status", "Ready.")
 st.caption(f"[{ts}] {status_text}")
@@ -345,7 +398,7 @@ prompt: Optional[str] = st.chat_input(input_prompt, key="main_chat_input")
 
 if prompt:
     if st.session_state.get("awaiting_user_guidance"):
-        # ── User guidance path ──
+        # -- User guidance path --
         logger.info(f"User guidance: '{prompt[:50]}...'")
         guidance_label = st.session_state.get("next_speaker_for_guidance", "N/A")
         guidance_content = f"USER GUIDANCE FOR {guidance_label}:\n{prompt}"
@@ -362,7 +415,7 @@ if prompt:
             _close_log()
             st.rerun()
     else:
-        # ── New conversation path ──
+        # -- New conversation path --
         logger.info(f"New prompt: '{prompt[:50]}...'")
         _reset_conversation()
 
@@ -391,38 +444,3 @@ if st.session_state.get("run_conversation_flag") and not st.session_state.get("a
     else:
         st.error("No prompt found.")
         st.session_state.current_status = "Error: prompt missing."
-
-
-# ---------------------------------------------------------------------------
-# Bottom controls
-# ---------------------------------------------------------------------------
-
-st.divider()
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    if st.button("Clear & Reset Conversation"):
-        _reset_conversation()
-        st.rerun()
-
-with col2:
-    if (
-        st.session_state.get("conversation_completed")
-        and isinstance(st.session_state.get("log_content"), list)
-        and st.session_state["log_content"]
-    ):
-        log_text = "\n".join(st.session_state["log_content"])
-        st.download_button(
-            label="Download Conversation Log",
-            data=log_text.encode("utf-8"),
-            file_name=st.session_state.get("current_log_filename", "conversation_log.txt"),
-            mime="text/plain",
-        )
-    elif st.session_state.get("conversation_completed"):
-        st.caption("Log unavailable for download.")
-
-# Logout
-st.sidebar.divider()
-if st.sidebar.button("Logout"):
-    auth.logout()
-    st.rerun()
