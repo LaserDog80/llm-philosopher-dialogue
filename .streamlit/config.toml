@@ -1,0 +1,11 @@
+[server]
+headless = true
+
+[theme]
+base = "light"
+backgroundColor = "#FAF8F3"
+secondaryBackgroundColor = "#F5F1EB"
+textColor = "#2D2620"
+
+[client]
+showSidebarNavigation = false

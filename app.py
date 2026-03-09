@@ -333,14 +333,14 @@ except Exception as e:
     model_info = {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
     logger.exception("Model info load failed.")
 
-# Layout: Settings gear + action buttons in a clean row
-col_settings, col_spacer, col_reset, col_download, col_logout = st.columns([1.5, 3, 1.2, 1.5, 0.8])
+# Layout: Settings + action buttons
+col_settings, col_reset, col_download, col_logout = st.columns([3, 2, 2, 1.5])
 
 with col_settings:
     gui.display_settings_popover(model_info)
 
 with col_reset:
-    if st.button("Clear & Reset", icon=":material/refresh:"):
+    if st.button("Clear & Reset"):
         _reset_conversation()
         st.rerun()
 
@@ -356,15 +356,12 @@ with col_download:
             data=log_text.encode("utf-8"),
             file_name=st.session_state.get("current_log_filename", "conversation_log.txt"),
             mime="text/plain",
-            icon=":material/download:",
         )
 
 with col_logout:
-    if st.button("Logout", icon=":material/logout:"):
+    if st.button("Logout"):
         auth.logout()
         st.rerun()
-
-st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # Conversation display
 gui.display_conversation(

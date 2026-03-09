@@ -58,128 +58,24 @@ SPEAKER_STYLES = {
 # ---------------------------------------------------------------------------
 # CSS Stylesheet — "Warm Study" theme
 # ---------------------------------------------------------------------------
-CHAT_CSS = """
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<style>
-/* ===== Warm Study — Global Overrides ===== */
+CHAT_CSS = """<style>
+/* ===== Warm Study — Minimal Overrides ===== */
 
-/* Hide default Streamlit sidebar completely */
-section[data-testid="stSidebar"] {
-    display: none !important;
-}
+/* Hide Streamlit sidebar and page navigation */
+section[data-testid="stSidebar"],
 button[data-testid="stSidebarCollapsedControl"],
-button[data-testid="stSidebarNavCollapseIcon"] {
+div[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {
     display: none !important;
-}
-
-/* Override Streamlit base fonts and background */
-.stApp {
-    background-color: #FAF8F3 !important;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-
-/* Override all Streamlit text elements */
-.stApp .stMarkdown, .stApp p, .stApp span, .stApp label, .stApp div {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.stApp h1, .stApp h2, .stApp h3, .stApp h4 {
-    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-
-/* Style Streamlit buttons globally */
-.stApp button[kind="secondary"],
-.stApp .stButton > button {
-    font-family: 'Inter', sans-serif !important;
-    border-radius: 10px !important;
-    border: 1px solid #E0D9CF !important;
-    background: #FEFDFB !important;
-    color: #2D2620 !important;
-    font-weight: 500 !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 2px 6px rgba(45,38,32,0.05) !important;
-}
-.stApp button[kind="secondary"]:hover,
-.stApp .stButton > button:hover {
-    background: #F5F1EB !important;
-    border-color: #C9B99A !important;
-    box-shadow: 0 4px 12px rgba(45,38,32,0.08) !important;
-}
-
-/* Style chat input */
-div[data-testid="stChatInput"] {
-    border-radius: 16px !important;
-    border: 1px solid #E0D9CF !important;
-    background: #FEFDFB !important;
-    box-shadow: 0 4px 16px rgba(45,38,32,0.06) !important;
-}
-div[data-testid="stChatInput"] textarea {
-    font-family: 'Inter', sans-serif !important;
-    color: #2D2620 !important;
-    font-size: 15px !important;
-}
-div[data-testid="stChatInput"] textarea::placeholder {
-    font-style: italic;
-    color: #B5ADA3 !important;
-}
-
-/* Style popover */
-div[data-testid="stPopover"] {
-    font-family: 'Inter', sans-serif !important;
-}
-div[data-testid="stPopoverBody"] {
-    background: #FEFDFB !important;
-    border: 1px solid #E0D9CF !important;
-    border-radius: 14px !important;
-    box-shadow: 0 8px 32px rgba(45,38,32,0.12) !important;
-    padding: 8px !important;
-}
-
-/* Style expander */
-.stApp details {
-    border: 1px solid #E0D9CF !important;
-    border-radius: 12px !important;
-    background: #FEFDFB !important;
-}
-
-/* Style radio buttons */
-.stApp .stRadio > label {
-    font-family: 'Inter', sans-serif !important;
-    color: #2D2620 !important;
-}
-
-/* Style checkboxes */
-.stApp .stCheckbox > label {
-    font-family: 'Inter', sans-serif !important;
-    color: #2D2620 !important;
-}
-
-/* Style number input */
-.stApp .stNumberInput input {
-    font-family: 'Inter', sans-serif !important;
-    border-radius: 10px !important;
-    border-color: #E0D9CF !important;
-}
-
-/* Style captions */
-.stApp .stCaption, .stApp caption {
-    font-family: 'Inter', sans-serif !important;
-    color: #A39B8F !important;
-}
-
-/* Dividers */
-.stApp hr {
-    border-color: #EDE8E0 !important;
 }
 
 /* ===== Top Header Bar ===== */
 .ws-header-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 0 24px;
+    padding: 8px 0 20px;
     border-bottom: 1px solid #EDE8E0;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 }
 .ws-header-left {
     display: flex;
@@ -198,15 +94,13 @@ div[data-testid="stPopoverBody"] {
     box-shadow: 0 4px 12px rgba(45,38,32,0.1);
 }
 .ws-title {
-    font-family: 'Manrope', sans-serif;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: #2D2620;
     margin: 0;
     letter-spacing: -0.5px;
 }
 .ws-subtitle {
-    font-family: 'Inter', sans-serif;
     font-size: 13px;
     color: #A39B8F;
     margin: 0;
@@ -583,7 +477,6 @@ div[data-testid="stPopoverBody"] {
 
 /* ===== Settings Panel Styling ===== */
 .ws-settings-section {
-    font-family: 'Manrope', sans-serif;
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
@@ -843,7 +736,7 @@ def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str
 def display_settings_popover(model_info: Dict[str, str]):
     """Render the settings as a popover triggered by a gear button."""
 
-    with st.popover("Settings", icon=":material/settings:", use_container_width=False):
+    with st.popover("Settings", use_container_width=False):
         # --- Conversation Section ---
         st.markdown('<div class="ws-settings-section">Conversation</div>', unsafe_allow_html=True)
 
