@@ -26,6 +26,42 @@
     "frequency_penalty": 0.0,
     "request_timeout": 90
   },
+  "aristotle": {
+    "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "temperature": 0.5,
+    "max_tokens": 250,
+    "top_p": 0.95,
+    "presence_penalty": 0.1,
+    "frequency_penalty": 0.05,
+    "request_timeout": 90
+  },
+  "nietzsche": {
+    "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "temperature": 0.7,
+    "max_tokens": 250,
+    "top_p": 0.95,
+    "presence_penalty": 0.1,
+    "frequency_penalty": 0.1,
+    "request_timeout": 90
+  },
+  "herodotus": {
+    "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "temperature": 0.6,
+    "max_tokens": 250,
+    "top_p": 0.95,
+    "presence_penalty": 0.05,
+    "frequency_penalty": 0.05,
+    "request_timeout": 90
+  },
+  "simaqian": {
+    "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "temperature": 0.55,
+    "max_tokens": 250,
+    "top_p": 0.9,
+    "presence_penalty": 0.05,
+    "frequency_penalty": 0.05,
+    "request_timeout": 90
+  },
   "moderator": {
     "model_name": "meta-llama/Llama-3.3-70B-Instruct",
     "temperature": 0.6,

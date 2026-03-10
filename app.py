@@ -69,7 +69,8 @@ _DEFAULTS: Dict[str, Any] = {
     "show_monologue_cb": False,
     "show_moderator_cb": False,
     "bypass_moderator_cb": False,
-    "starting_philosopher": "Socrates",
+    "philosopher_1": "Socrates",
+    "philosopher_2": "Confucius",
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "run_conversation_flag": False,
@@ -170,7 +171,8 @@ def _run_initial_conversation(prompt: str) -> None:
     """Start a new conversation from an initial user prompt."""
     num_rounds = st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS)
     mode = st.session_state.get("current_run_mode", DEFAULT_CONVERSATION_MODE)
-    starter = st.session_state.get("starting_philosopher", "Socrates")
+    starter = st.session_state.get("philosopher_1", "Socrates")
+    philosopher_2 = st.session_state.get("philosopher_2", "Confucius")
     bypass = st.session_state.get("bypass_moderator_cb", False)
     mod_ctrl = st.session_state.get("moderator_control_mode", DEFAULT_MODERATOR_CONTROL)
 
@@ -197,6 +199,7 @@ def _run_initial_conversation(prompt: str) -> None:
                 initial_input=prompt,
                 num_rounds=num_rounds,
                 starting_philosopher=starter,
+                philosopher_2=philosopher_2,
                 run_moderated=run_moderated,
                 mode=mode,
                 moderator_type=mod_type,
@@ -338,7 +341,7 @@ gui.display_header()
 try:
     model_info = gui.get_model_info_from_config()
 except Exception as e:
-    model_info = {"Socrates": "Unknown", "Confucius": "Unknown", "Moderator": "Unknown"}
+    model_info = {}
     logger.exception("Model info load failed.")
 
 # Layout: Settings + action buttons

@@ -586,11 +586,13 @@ def _render_error(content: str) -> str:
 
 def _render_empty_state() -> str:
     """Render the empty conversation state."""
+    p1 = st.session_state.get("philosopher_1", "Socrates")
+    p2 = st.session_state.get("philosopher_2", "Confucius")
     return (
         '<div class="phd-empty">'
         '  <div class="phd-empty-icon">&#x1F3DB;</div>'
         '  <div class="phd-empty-text">Begin a philosophical dialogue</div>'
-        '  <div class="phd-empty-hint">Enter a question below to start the conversation between Socrates and Confucius</div>'
+        f'  <div class="phd-empty-hint">Enter a question below to start the conversation between {_esc(p1)} and {_esc(p2)}</div>'
         '</div>'
     )
 
@@ -665,13 +667,16 @@ def inject_chat_css():
 
 def display_header():
     """Render the Warm Study application header."""
+    p1 = st.session_state.get("philosopher_1", "Socrates")
+    p2 = st.session_state.get("philosopher_2", "Confucius")
+    subtitle = f"A moderated conversation between {html.escape(p1)} and {html.escape(p2)}"
     st.markdown(
         '<div class="ws-header-bar">'
         '  <div class="ws-header-left">'
         '    <div class="ws-header-icon">&#x1F3DB;</div>'
         '    <div>'
         '      <h1 class="ws-title">Philosopher Dialogue</h1>'
-        '      <p class="ws-subtitle">A moderated conversation between Socrates and Confucius</p>'
+        f'      <p class="ws-subtitle">{subtitle}</p>'
         '    </div>'
         '  </div>'
         '</div>',
@@ -718,12 +723,19 @@ def display_settings_popover(model_info: Dict[str, str]):
         )
 
         _philosopher_names = get_display_names()
-        st.radio(
-            "Starting Philosopher:",
-            tuple(_philosopher_names),
-            key="starting_philosopher",
-            horizontal=True,
+        st.selectbox(
+            "Philosopher 1 (speaks first):",
+            _philosopher_names,
+            key="philosopher_1",
             index=0,
+        )
+        # Default philosopher 2 to second in the list (or first if only one)
+        default_p2_index = 1 if len(_philosopher_names) > 1 else 0
+        st.selectbox(
+            "Philosopher 2:",
+            _philosopher_names,
+            key="philosopher_2",
+            index=default_p2_index,
         )
 
         st.number_input(

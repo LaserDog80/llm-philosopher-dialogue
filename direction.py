@@ -145,16 +145,21 @@ class Director:
             logger.error(f"Round {round_num}: Failed to parse Moderator text output: {e}\nRaw:\n{moderator_raw_output}", exc_info=True)
             return None, "Error: Failed to parse moderator output.", moderator_raw_output
 
-    def _load_chains_for_mode(self, mode: str, run_moderated: bool) -> Tuple[Dict[str, Any], Any, bool]:
+    def _load_chains_for_mode(self, mode: str, run_moderated: bool,
+                              philosopher_ids: Optional[List[str]] = None) -> Tuple[Dict[str, Any], Any, bool]:
         """Load philosopher and moderator chains via the registry + factory.
 
         Returns (philosopher_chains_dict, moderator_chain, success).
         ``philosopher_chains_dict`` maps philosopher id -> chain.
+
+        If *philosopher_ids* is given, only those philosophers are loaded;
+        otherwise all registered philosophers are loaded.
         """
         phil_chains: Dict[str, Any] = {}
         m_chain = None
+        ids_to_load = philosopher_ids if philosopher_ids else get_philosopher_ids()
         try:
-            for pid in get_philosopher_ids():
+            for pid in ids_to_load:
                 chain = create_chain(pid, mode=mode)
                 if chain is None:
                     raise ImportError(f"Chain load failed for philosopher '{pid}' in mode '{mode}'")
@@ -175,6 +180,7 @@ class Director:
                                    initial_input: str,
                                    num_rounds: int,
                                    starting_philosopher: str = "Socrates",
+                                   philosopher_2: Optional[str] = None,
                                    run_moderated: bool = True,
                                    mode: str = 'philosophy',
                                    moderator_type: str = 'ai',
@@ -188,6 +194,9 @@ class Director:
         If moderator_type is 'user_guidance', it may pause after a moderator summary,
         returning a state to be resumed.
 
+        *starting_philosopher* and *philosopher_2* are display names. When
+        *philosopher_2* is ``None`` a second philosopher is chosen automatically.
+
         Optional streaming support:
         - stream: if True, use _robust_stream instead of _robust_invoke for philosopher turns
         - on_token: callback(token_str) called for each streamed token
@@ -196,31 +205,33 @@ class Director:
         Returns: (generated_messages, final_status, success, director_resume_state, data_for_user_guidance)
         """
         run_mode_desc = ("MODERATED" if run_moderated else "DIRECT") + (f" ({moderator_type} control)" if run_moderated else "")
-        logger.info(f"Director starting NEW {run_mode_desc} conversation in '{mode}' mode: Rounds={num_rounds}, Starter='{starting_philosopher}'.")
+        logger.info(f"Director starting NEW {run_mode_desc} conversation in '{mode}' mode: Rounds={num_rounds}, Starter='{starting_philosopher}', Other='{philosopher_2}'.")
 
-        phil_chains, m_chain, chains_loaded_ok = self._load_chains_for_mode(mode, run_moderated)
-        if not chains_loaded_ok:
-            error_msg = f"Error: Failed to load necessary models/chains for '{mode}' mode."
-            return [], error_msg, False, None, None
-
-        # Map display names to chains via the registry
-        phil_ids = get_philosopher_ids()
+        # Resolve display names to IDs
+        all_phil_ids = get_philosopher_ids()
         id_to_name = {}
-        for pid in phil_ids:
+        name_to_id = {}
+        for pid in all_phil_ids:
             pcfg = get_philosopher(pid)
             if pcfg:
                 id_to_name[pid] = pcfg.display_name
+                name_to_id[pcfg.display_name] = pid
 
-        # Determine actor order based on starting_philosopher
-        starter_id = None
-        for pid, dname in id_to_name.items():
-            if dname == starting_philosopher:
-                starter_id = pid
-                break
-        if starter_id is None:
-            starter_id = phil_ids[0]
+        starter_id = name_to_id.get(starting_philosopher, all_phil_ids[0])
 
-        other_id = [pid for pid in phil_ids if pid != starter_id][0]
+        if philosopher_2 and philosopher_2 in name_to_id:
+            other_id = name_to_id[philosopher_2]
+        else:
+            # Fall back: pick the first philosopher that isn't the starter
+            other_id = [pid for pid in all_phil_ids if pid != starter_id][0]
+
+        # Only load chains for the selected pair
+        phil_chains, m_chain, chains_loaded_ok = self._load_chains_for_mode(
+            mode, run_moderated, philosopher_ids=[starter_id, other_id]
+        )
+        if not chains_loaded_ok:
+            error_msg = f"Error: Failed to load necessary models/chains for '{mode}' mode."
+            return [], error_msg, False, None, None
         actor_1_name = id_to_name[starter_id]
         actor_1_chain = phil_chains[starter_id]
         actor_2_name = id_to_name[other_id]
@@ -345,7 +356,17 @@ class Director:
         if resume_state.get("actor_1_chain") is None:
             mode = resume_state.get("mode", "philosophy")
             run_moderated = resume_state.get("run_moderated", True)
-            phil_chains, m_chain, ok = self._load_chains_for_mode(mode, run_moderated)
+            # Resolve the pair IDs from stored display names
+            _resume_ids = []
+            for _aname in [resume_state.get("actor_1_name"), resume_state.get("actor_2_name")]:
+                for _pid in get_philosopher_ids():
+                    _pcfg = get_philosopher(_pid)
+                    if _pcfg and _pcfg.display_name == _aname:
+                        _resume_ids.append(_pid)
+                        break
+            phil_chains, m_chain, ok = self._load_chains_for_mode(
+                mode, run_moderated, philosopher_ids=_resume_ids or None
+            )
             if not ok:
                 return [], "Error: Failed to reload chains on resume.", False, None, None
 

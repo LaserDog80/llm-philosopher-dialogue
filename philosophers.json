@@ -17,6 +17,42 @@
       "bg": "#fdf6e3",
       "text_color": "#8B6914",
       "description": "Chinese philosopher of the Spring and Autumn period"
+    },
+    {
+      "id": "aristotle",
+      "display_name": "Aristotle",
+      "initials": "A",
+      "color": "#7B68AE",
+      "bg": "#f3f0fa",
+      "text_color": "#5A4B8A",
+      "description": "4th-century BCE Greek philosopher from Stagira"
+    },
+    {
+      "id": "nietzsche",
+      "display_name": "Nietzsche",
+      "initials": "N",
+      "color": "#C75050",
+      "bg": "#fdf0f0",
+      "text_color": "#A03030",
+      "description": "19th-century German philosopher"
+    },
+    {
+      "id": "herodotus",
+      "display_name": "Herodotus",
+      "initials": "H",
+      "color": "#4A9E7E",
+      "bg": "#edf8f3",
+      "text_color": "#2D7A5A",
+      "description": "5th-century BCE Greek historian from Halicarnassus"
+    },
+    {
+      "id": "simaqian",
+      "display_name": "Sima Qian",
+      "initials": "Q",
+      "color": "#C9956B",
+      "bg": "#fdf5ed",
+      "text_color": "#8B6540",
+      "description": "2nd-century BCE Chinese historian"
     }
   ],
   "moderator": {
