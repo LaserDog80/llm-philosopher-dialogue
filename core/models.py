@@ -90,3 +90,19 @@ class DisplaySettings:
     show_monologue: bool = False
     show_moderator: bool = False
     output_style: str = "Original Text"
+
+
+# ---------------------------------------------------------------------------
+# Agentic AI — LangGraph state
+# ---------------------------------------------------------------------------
+
+class ConversationStyle(str, Enum):
+    SELF_DIRECTED = "Self-Directed"
+    USER_GUIDED = "User-Guided"
+
+
+class SpeakerIntent(str, Enum):
+    ADDRESS = "address"
+    CHALLENGE = "challenge"
+    YIELD = "yield"
+    REFLECT = "reflect"

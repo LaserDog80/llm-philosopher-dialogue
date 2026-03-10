@@ -1,7 +1,10 @@
-# core/memory.py — Sliding-window conversation memory.
+# core/memory.py — Sliding-window conversation memory + persistent philosopher memory.
 
 import logging
+import os
+import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional, Dict
 
 from langchain_core.messages import HumanMessage, BaseMessage
@@ -72,3 +75,111 @@ class ConversationMemory:
 
     def clear(self) -> None:
         self._turns.clear()
+
+
+# ---------------------------------------------------------------------------
+# PhilosopherMemory — persistent cross-session memory per philosopher
+# ---------------------------------------------------------------------------
+
+DEFAULT_MEMORY_DB = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "philosopher_memory.db"
+)
+
+
+class PhilosopherMemory:
+    """Long-term memory for a philosopher across sessions.
+
+    Stores topic-position pairs in SQLite so philosophers can recall
+    what they discussed in previous conversations.
+    """
+
+    def __init__(self, philosopher_id: str, db_path: str = DEFAULT_MEMORY_DB):
+        self.philosopher_id = philosopher_id
+        self.db_path = db_path
+        self._ensure_table()
+
+    def _get_conn(self) -> sqlite3.Connection:
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        return sqlite3.connect(self.db_path)
+
+    def _ensure_table(self) -> None:
+        try:
+            conn = self._get_conn()
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS philosopher_memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    philosopher_id TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    position TEXT NOT NULL,
+                    session_id TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_phil_topic
+                ON philosopher_memory (philosopher_id, topic)
+            """)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"PhilosopherMemory table creation failed: {e}")
+
+    def record_position(self, topic: str, position_summary: str, session_id: str = "") -> None:
+        """Record a philosopher's position on a topic."""
+        try:
+            conn = self._get_conn()
+            conn.execute(
+                "INSERT INTO philosopher_memory (philosopher_id, topic, position, session_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (self.philosopher_id, topic, position_summary, session_id, datetime.now().isoformat()),
+            )
+            conn.commit()
+            conn.close()
+            logger.info(f"Recorded position for {self.philosopher_id} on '{topic}'")
+        except Exception as e:
+            logger.error(f"Failed to record position: {e}")
+
+    def recall_positions(self, topic: str, limit: int = 5) -> List[Dict[str, str]]:
+        """Recall previous positions on a topic (fuzzy match via LIKE)."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.execute(
+                "SELECT topic, position, created_at FROM philosopher_memory "
+                "WHERE philosopher_id = ? AND topic LIKE ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (self.philosopher_id, f"%{topic}%", limit),
+            )
+            results = [
+                {"topic": row[0], "position": row[1], "created_at": row[2]}
+                for row in cursor.fetchall()
+            ]
+            conn.close()
+            return results
+        except Exception as e:
+            logger.error(f"Failed to recall positions: {e}")
+            return []
+
+    def get_all_topics(self) -> List[str]:
+        """Return all unique topics this philosopher has discussed."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.execute(
+                "SELECT DISTINCT topic FROM philosopher_memory WHERE philosopher_id = ? ORDER BY topic",
+                (self.philosopher_id,),
+            )
+            topics = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return topics
+        except Exception as e:
+            logger.error(f"Failed to get topics: {e}")
+            return []
+
+    def get_context_for_prompt(self, topic: str, limit: int = 3) -> str:
+        """Build a prompt-ready context string from recalled positions."""
+        positions = self.recall_positions(topic, limit=limit)
+        if not positions:
+            return ""
+        lines = ["[Previous discussions on related topics:]"]
+        for p in positions:
+            lines.append(f"- On '{p['topic']}': {p['position']}")
+        return "\n".join(lines)

@@ -1,6 +1,6 @@
-"""Tests for core/utils.py — think-block extraction and text cleaning."""
+"""Tests for core/utils.py — think-block extraction, text cleaning, direction tags."""
 
-from core.utils import extract_think_block, clean_response, extract_and_clean
+from core.utils import extract_think_block, clean_response, extract_and_clean, parse_direction_tag
 
 
 class TestExtractThinkBlock:
@@ -61,3 +61,43 @@ class TestExtractAndClean:
         cleaned, monologue = extract_and_clean(text)
         assert cleaned == ""
         assert monologue == "just thinking"
+
+
+class TestParseDirectionTag:
+    def test_basic_tag(self):
+        text = "I believed virtue was knowledge.\n[NEXT: Confucius | INTENT: address]"
+        cleaned, info = parse_direction_tag(text)
+        assert cleaned == "I believed virtue was knowledge."
+        assert info["next"] == "Confucius"
+        assert info["intent"] == "address"
+
+    def test_challenge_intent(self):
+        text = "That is not how I saw it.\n[NEXT: Socrates | INTENT: challenge]"
+        cleaned, info = parse_direction_tag(text)
+        assert "not how I saw it" in cleaned
+        assert info["intent"] == "challenge"
+
+    def test_no_tag(self):
+        text = "Just a response without any tag."
+        cleaned, info = parse_direction_tag(text)
+        assert cleaned == text
+        assert info == {}
+
+    def test_tag_stripped_from_middle(self):
+        text = "Some text [NEXT: Aristotle | INTENT: yield] and more."
+        cleaned, info = parse_direction_tag(text)
+        assert "[NEXT:" not in cleaned
+        assert info["next"] == "Aristotle"
+        assert info["intent"] == "yield"
+
+    def test_case_insensitive(self):
+        text = "Response.\n[next: Confucius | intent: Reflect]"
+        cleaned, info = parse_direction_tag(text)
+        assert info["next"] == "Confucius"
+        assert info["intent"] == "reflect"
+
+    def test_extra_whitespace(self):
+        text = "Response.\n[NEXT:   Sima Qian   |  INTENT:   address  ]"
+        cleaned, info = parse_direction_tag(text)
+        assert info["next"] == "Sima Qian"
+        assert info["intent"] == "address"

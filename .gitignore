@@ -13,6 +13,9 @@ __pycache__/
 # Logs
 logs/
 
+# Data (SQLite DBs for conversation/memory persistence)
+data/*.db
+
 # Build / packaging
 build/
 dist/

@@ -1,9 +1,15 @@
-# core/utils.py — Shared utilities (think-block extraction, text cleaning).
+# core/utils.py — Shared utilities (think-block extraction, text cleaning, direction tags).
 
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 THINK_BLOCK_REGEX = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+# Direction tag: [NEXT: <name> | INTENT: <intent>]
+DIRECTION_TAG_REGEX = re.compile(
+    r"\[NEXT:\s*(?P<next>[^|]+?)\s*\|\s*INTENT:\s*(?P<intent>\w+)\s*\]",
+    re.IGNORECASE,
+)
 
 
 def extract_think_block(text: Optional[str]) -> Optional[str]:
@@ -30,3 +36,21 @@ def extract_and_clean(raw_response: Optional[str]) -> Tuple[str, Optional[str]]:
     if not cleaned and raw_response:
         return "", monologue
     return cleaned, monologue
+
+
+def parse_direction_tag(text: str) -> Tuple[str, Dict[str, str]]:
+    """Parse and strip a direction tag from a philosopher's response.
+
+    Returns (cleaned_text, {"next": "<name>", "intent": "<intent>"}).
+    If no tag is found, returns (original_text, {}).
+    """
+    match = DIRECTION_TAG_REGEX.search(text)
+    if not match:
+        return text.strip(), {}
+
+    tag_info = {
+        "next": match.group("next").strip(),
+        "intent": match.group("intent").strip().lower(),
+    }
+    cleaned = text[:match.start()] + text[match.end():]
+    return cleaned.strip(), tag_info

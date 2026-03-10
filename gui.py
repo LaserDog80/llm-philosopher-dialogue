@@ -681,7 +681,7 @@ def display_header():
     """Render the Warm Study application header."""
     p1 = st.session_state.get("philosopher_1", "Socrates")
     p2 = st.session_state.get("philosopher_2", "Confucius")
-    subtitle = f"A moderated conversation between {html.escape(p1)} and {html.escape(p2)}"
+    subtitle = f"A self-directed dialogue between {html.escape(p1)} and {html.escape(p2)}"
     st.markdown(
         '<div class="ws-header-bar">'
         '  <div class="ws-header-left">'
@@ -759,25 +759,6 @@ def display_settings_popover(model_info: Dict[str, str]):
             help="One round = one response from each philosopher.",
         )
 
-        # --- Moderation Section ---
-        st.markdown('<div class="ws-settings-section">Moderation</div>', unsafe_allow_html=True)
-
-        st.radio(
-            "Moderator Control:",
-            options=["AI Moderator", "User as Moderator (Guidance)"],
-            key="moderator_control_mode",
-            index=0,
-            horizontal=True,
-            help="Choose who provides guidance: AI or You.",
-        )
-
-        st.checkbox(
-            "Bypass Moderator",
-            key="bypass_moderator_cb",
-            value=st.session_state.get("bypass_moderator_cb", False),
-            help="Philosophers respond directly without moderator.",
-        )
-
         # --- Display Section ---
         st.markdown('<div class="ws-settings-section">Display</div>', unsafe_allow_html=True)
 
@@ -788,12 +769,6 @@ def display_settings_popover(model_info: Dict[str, str]):
             horizontal=True,
             index=0,
             help="View original dialogue or a casual translation.",
-        )
-
-        st.checkbox(
-            "Show Moderator Context",
-            key="show_moderator_cb",
-            value=st.session_state.get("show_moderator_cb", False),
         )
 
         st.checkbox(
