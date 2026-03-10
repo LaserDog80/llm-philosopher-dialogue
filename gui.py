@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 SPEAKER_STYLES = get_speaker_styles()
 
+# Reverse lookup: lowercased display name -> style key (philosopher ID).
+# Handles cases like "Sima Qian" -> "simaqian" where display_name.lower() != id.
+_DISPLAY_NAME_TO_KEY = {
+    style["display_name"].lower(): key for key, style in SPEAKER_STYLES.items()
+}
+
 # ---------------------------------------------------------------------------
 # CSS Stylesheet — "Warm Study" theme
 # ---------------------------------------------------------------------------
@@ -483,7 +489,13 @@ def _esc(text: str) -> str:
 def _get_style(role: str) -> dict:
     """Get the visual style dict for a given role."""
     key = role.lower().strip()
-    return SPEAKER_STYLES.get(key, SPEAKER_STYLES["system"])
+    # Try direct ID match first, then display-name reverse lookup
+    if key in SPEAKER_STYLES:
+        return SPEAKER_STYLES[key]
+    resolved = _DISPLAY_NAME_TO_KEY.get(key)
+    if resolved:
+        return SPEAKER_STYLES[resolved]
+    return SPEAKER_STYLES["system"]
 
 
 def _render_topic_card(content: str) -> str:
@@ -829,7 +841,8 @@ def display_conversation(
 
         # --- Philosopher messages ---
         _philosopher_ids = set(get_philosopher_ids())
-        if role_lower in _philosopher_ids:
+        _is_philosopher = role_lower in _philosopher_ids or _DISPLAY_NAME_TO_KEY.get(role_lower) in _philosopher_ids
+        if _is_philosopher:
             philosopher_turn_count += 1
             round_num = (philosopher_turn_count - 1) // 2 + 1
 
