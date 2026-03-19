@@ -12,9 +12,9 @@ RETRY_DELAY = 2  # seconds
 
 THINK_BLOCK_REGEX = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
 
-# Direction tag: [NEXT: <name> | INTENT: <intent>]
+# Direction tag: [NEXT: <name> | INTENT: <intent>] or [NEXT: <name> | <intent>]
 DIRECTION_TAG_REGEX = re.compile(
-    r"\[NEXT:\s*(?P<next>[^|]+?)\s*\|\s*INTENT:\s*(?P<intent>\w+)\s*\]",
+    r"\[NEXT:\s*(?P<next>[^|]+?)\s*\|\s*(?:INTENT:\s*)?(?P<intent>\w+)\s*\]",
     re.IGNORECASE,
 )
 

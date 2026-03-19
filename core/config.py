@@ -73,6 +73,7 @@ def load_llm_config_for_persona(
     mode: str = "philosophy",
     config_path: str = "llm_config.json",
     prompt_overrides: Optional[Dict[str, str]] = None,
+    max_tokens_override: Optional[int] = None,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
@@ -113,7 +114,7 @@ def load_llm_config_for_persona(
         "request_timeout": params.get("request_timeout", DEFAULT_TIMEOUT),
         "temperature": params.get("temperature", DEFAULT_TEMPERATURE),
     }
-    max_tokens = params.get("max_tokens", DEFAULT_MAX_TOKENS)
+    max_tokens = max_tokens_override or params.get("max_tokens", DEFAULT_MAX_TOKENS)
     if max_tokens is not None:
         llm_kwargs["max_tokens"] = max_tokens
     top_p = params.get("top_p", DEFAULT_TOP_P)

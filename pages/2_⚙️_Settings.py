@@ -7,6 +7,14 @@ import logging
 
 import streamlit as st
 
+# Bridge Streamlit Cloud secrets into os.environ
+try:
+    for _key in ("NEBIUS_API_KEY", "NEBIUS_API_BASE"):
+        if _key in st.secrets and _key not in os.environ:
+            os.environ[_key] = st.secrets[_key]
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------

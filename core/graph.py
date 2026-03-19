@@ -47,6 +47,7 @@ class DialogueState(TypedDict, total=False):
     mode: str                # philosophy or bio
     topic: str               # Original user question
     turn_count: int          # Total turns taken so far
+    max_tokens: int          # Runtime max_tokens override (from verbosity slider)
     is_complete: bool
     error: str
 
@@ -66,8 +67,9 @@ def philosopher_node(state: DialogueState) -> Dict:
     pcfg = get_philosopher(next_id)
     speaker_name = pcfg.display_name if pcfg else next_id
 
-    # Load chain
-    chain = create_chain(next_id, mode=mode)
+    # Load chain (with optional max_tokens override from verbosity slider)
+    max_tokens = state.get("max_tokens", 0) or None
+    chain = create_chain(next_id, mode=mode, max_tokens_override=max_tokens)
     if chain is None:
         return {"error": f"Failed to load chain for {speaker_name}", "is_complete": True}
 
@@ -133,8 +135,9 @@ def philosopher_node(state: DialogueState) -> Dict:
     # Update memory
     memory.add_turn(speaker_name, cleaned_response, current_round)
 
-    # Build message
-    msg = {"role": speaker_name, "content": cleaned_response, "monologue": monologue}
+    # Build message (include intent for UI display)
+    intent = direction.get("intent", "address")
+    msg = {"role": speaker_name, "content": cleaned_response, "monologue": monologue, "intent": intent}
     messages = state.get("messages", []) + [msg]
 
     return {
@@ -283,6 +286,7 @@ def run_agentic_conversation(
     db_path: str = DEFAULT_DB_PATH,
     thread_id: Optional[str] = None,
     on_status: Optional[Callable] = None,
+    max_tokens: int = 0,
 ) -> Tuple[List[Dict[str, Any]], str, bool, str]:
     """Run a self-organizing philosopher conversation.
 
@@ -341,6 +345,7 @@ def run_agentic_conversation(
         "mode": mode.lower(),
         "topic": topic,
         "turn_count": 0,
+        "max_tokens": max_tokens,
         "is_complete": False,
         "error": "",
     }
