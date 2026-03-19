@@ -12,6 +12,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Bridge Streamlit Cloud secrets into os.environ so core modules
+# (which use os.getenv) work without a .env file.
+try:
+    for key in ("NEBIUS_API_KEY", "NEBIUS_API_BASE"):
+        if key in st.secrets and key not in os.environ:
+            os.environ[key] = st.secrets[key]
+except Exception:
+    pass  # No secrets configured (local dev with .env)
+
 # ---------------------------------------------------------------------------
 # Logging — single basicConfig call for the whole process
 # ---------------------------------------------------------------------------
@@ -71,6 +80,7 @@ _DEFAULTS: Dict[str, Any] = {
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "conversation_style": DEFAULT_CONVERSATION_STYLE,
+    "max_tokens": 400,
     "run_conversation_flag": False,
     "conversation_completed": False,
     "prompt_overrides": {},
@@ -166,12 +176,14 @@ def _run_initial_conversation(prompt: str) -> None:
             unsafe_allow_html=True,
         )
 
+        max_tokens = st.session_state.get("max_tokens", 0)
         gen_msgs, final_status, success, thread_id = run_agentic_conversation(
             topic=prompt,
             philosopher_1=starter,
             philosopher_2=philosopher_2,
             num_rounds=num_rounds,
             mode=mode,
+            max_tokens=max_tokens,
         )
         logger.info(f"Agentic conversation finished. success={success}, status={final_status}")
         thinking_placeholder.empty()
@@ -182,7 +194,7 @@ def _run_initial_conversation(prompt: str) -> None:
         for m in gen_msgs:
             _write_log(m)
 
-        st.session_state.conversation_completed = True if success else True
+        st.session_state.conversation_completed = success
         if success:
             _maybe_translate(mode)
         _close_log()

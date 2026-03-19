@@ -7,6 +7,14 @@ import logging
 
 import streamlit as st
 
+# Bridge Streamlit Cloud secrets into os.environ
+try:
+    for _key in ("NEBIUS_API_KEY", "NEBIUS_API_BASE"):
+        if _key in st.secrets and _key not in os.environ:
+            os.environ[_key] = st.secrets[_key]
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
@@ -30,6 +38,7 @@ if parent_dir not in sys.path:
 
 try:
     from llm_loader import load_default_prompt_text
+    from core.registry import get_display_names
     import gui
 except ImportError as e:
     st.error(f"Import error: {e}")
@@ -61,7 +70,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PERSONAS = ["Socrates", "Confucius", "Moderator"]
+PERSONAS = get_display_names() + ["Moderator"]
 MODES = ["Philosophy", "Bio"]
 FALLBACK_TEXT = "Default prompt file not found."
 

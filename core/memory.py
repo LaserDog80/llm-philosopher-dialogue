@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage, BaseMessage
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WINDOW_SIZE = 6
+DEFAULT_WINDOW_SIZE = 50  # Large enough to cover full conversations
 
 
 @dataclass
@@ -45,6 +45,18 @@ class ConversationMemory:
         window = self._turns[-self.window_size:] if len(self._turns) > self.window_size else self._turns[:]
         messages: List[BaseMessage] = []
         for turn in window:
+            formatted = f"[{turn['speaker']}, Round {turn['round']}]: {turn['content']}"
+            messages.append(HumanMessage(content=formatted))
+        return messages
+
+    def get_full_history_for_chain(self) -> List[BaseMessage]:
+        """Return ALL turns as LangChain messages, ignoring window_size.
+
+        Use this when full conversation context is needed, e.g. for
+        philosopher nodes that need to see the entire conversation.
+        """
+        messages: List[BaseMessage] = []
+        for turn in self._turns:
             formatted = f"[{turn['speaker']}, Round {turn['round']}]: {turn['content']}"
             messages.append(HumanMessage(content=formatted))
         return messages
@@ -104,37 +116,35 @@ class PhilosopherMemory:
 
     def _ensure_table(self) -> None:
         try:
-            conn = self._get_conn()
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS philosopher_memory (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    philosopher_id TEXT NOT NULL,
-                    topic TEXT NOT NULL,
-                    position TEXT NOT NULL,
-                    session_id TEXT,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_phil_topic
-                ON philosopher_memory (philosopher_id, topic)
-            """)
-            conn.commit()
-            conn.close()
+            with self._get_conn() as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS philosopher_memory (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        philosopher_id TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        position TEXT NOT NULL,
+                        session_id TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_phil_topic
+                    ON philosopher_memory (philosopher_id, topic)
+                """)
+                conn.commit()
         except Exception as e:
             logger.error(f"PhilosopherMemory table creation failed: {e}")
 
     def record_position(self, topic: str, position_summary: str, session_id: str = "") -> None:
         """Record a philosopher's position on a topic."""
         try:
-            conn = self._get_conn()
-            conn.execute(
-                "INSERT INTO philosopher_memory (philosopher_id, topic, position, session_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (self.philosopher_id, topic, position_summary, session_id, datetime.now().isoformat()),
-            )
-            conn.commit()
-            conn.close()
+            with self._get_conn() as conn:
+                conn.execute(
+                    "INSERT INTO philosopher_memory (philosopher_id, topic, position, session_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (self.philosopher_id, topic, position_summary, session_id, datetime.now().isoformat()),
+                )
+                conn.commit()
             logger.info(f"Recorded position for {self.philosopher_id} on '{topic}'")
         except Exception as e:
             logger.error(f"Failed to record position: {e}")
@@ -142,18 +152,17 @@ class PhilosopherMemory:
     def recall_positions(self, topic: str, limit: int = 5) -> List[Dict[str, str]]:
         """Recall previous positions on a topic (fuzzy match via LIKE)."""
         try:
-            conn = self._get_conn()
-            cursor = conn.execute(
-                "SELECT topic, position, created_at FROM philosopher_memory "
-                "WHERE philosopher_id = ? AND topic LIKE ? "
-                "ORDER BY created_at DESC LIMIT ?",
-                (self.philosopher_id, f"%{topic}%", limit),
-            )
-            results = [
-                {"topic": row[0], "position": row[1], "created_at": row[2]}
-                for row in cursor.fetchall()
-            ]
-            conn.close()
+            with self._get_conn() as conn:
+                cursor = conn.execute(
+                    "SELECT topic, position, created_at FROM philosopher_memory "
+                    "WHERE philosopher_id = ? AND topic LIKE ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (self.philosopher_id, f"%{topic}%", limit),
+                )
+                results = [
+                    {"topic": row[0], "position": row[1], "created_at": row[2]}
+                    for row in cursor.fetchall()
+                ]
             return results
         except Exception as e:
             logger.error(f"Failed to recall positions: {e}")
@@ -162,13 +171,12 @@ class PhilosopherMemory:
     def get_all_topics(self) -> List[str]:
         """Return all unique topics this philosopher has discussed."""
         try:
-            conn = self._get_conn()
-            cursor = conn.execute(
-                "SELECT DISTINCT topic FROM philosopher_memory WHERE philosopher_id = ? ORDER BY topic",
-                (self.philosopher_id,),
-            )
-            topics = [row[0] for row in cursor.fetchall()]
-            conn.close()
+            with self._get_conn() as conn:
+                cursor = conn.execute(
+                    "SELECT DISTINCT topic FROM philosopher_memory WHERE philosopher_id = ? ORDER BY topic",
+                    (self.philosopher_id,),
+                )
+                topics = [row[0] for row in cursor.fetchall()]
             return topics
         except Exception as e:
             logger.error(f"Failed to get topics: {e}")

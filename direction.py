@@ -5,13 +5,9 @@ import logging
 from typing import List, Tuple, Dict, Any, Optional
 
 from core.persona import create_chain
-from core.utils import extract_and_clean
+from core.utils import extract_and_clean, robust_invoke
 from core.memory import ConversationMemory
 from core.registry import get_philosopher_ids, get_philosopher
-
-# --- Configuration ---
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
 
 logger = logging.getLogger(__name__)
 
@@ -21,32 +17,8 @@ class Director:
         logger.info("Director initialized (chains will be loaded per conversation mode/resume).")
 
     def _robust_invoke(self, chain: Any, input_dict: Dict[str, Any], actor_name: str, round_num: int) -> Tuple[Optional[str], Optional[str]]:
-        """Invoke a chain with retry logic. Returns (clean_response, monologue)."""
-        if chain is None:
-            logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None.")
-            return None, None
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                logger.info(f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES})")
-                start_time = time.time()
-                raw_response_obj = chain.invoke(input_dict)
-                raw_response = str(raw_response_obj) if raw_response_obj is not None else None
-                elapsed = time.time() - start_time
-                logger.info(f"Round {round_num}: {actor_name} responded in {elapsed:.2f}s.")
-                if raw_response is not None and raw_response.strip():
-                    return extract_and_clean(raw_response)
-                elif raw_response == "":
-                    return "", None
-                else:
-                    raise ValueError(f"Empty response from {actor_name}: '{raw_response}'")
-            except Exception as e:
-                logger.error(f"Round {round_num}: {actor_name} failed (Attempt {attempt}): {e}", exc_info=True)
-                if attempt == MAX_RETRIES:
-                    logger.error(f"Round {round_num}: {actor_name} failed permanently.")
-                    return None, None
-                logger.info(f"Retrying in {RETRY_DELAY}s...")
-                time.sleep(RETRY_DELAY)
-        return None, None
+        """Invoke a chain with retry logic. Delegates to shared robust_invoke."""
+        return robust_invoke(chain, input_dict, actor_name, round_num)
 
     def _robust_stream(self, chain: Any, input_dict: Dict[str, Any], actor_name: str,
                        round_num: int, on_token_callback: Any = None
@@ -283,7 +255,7 @@ class Director:
                     on_status(f"{current_speaker_name} is thinking... (Round {round_num_for_log} of {num_rounds})")
 
                 # Build input with conversation memory
-                history = memory.get_history_for_chain()
+                history = memory.get_full_history_for_chain()
                 invoke_input = {"input": input_content_for_speaker, "chat_history": history}
                 if stream:
                     speaker_response, speaker_monologue = self._robust_stream(
@@ -324,6 +296,7 @@ class Director:
                     current_conversation_state["messages_log"].append({"role": "system", "content": mod_output_text, "monologue": None})
 
                     current_conversation_state["input_for_next_speaker"] = (
+                        f"Original topic: {initial_input}\n\n"
                         f"{speaker_response}\n\n"
                         f"--- Moderator Context ---\n"
                         f"Summary: {summary}\n"
@@ -331,7 +304,9 @@ class Director:
                         f"--- End Context ---"
                     )
                 else:
-                    current_conversation_state["input_for_next_speaker"] = speaker_response
+                    current_conversation_state["input_for_next_speaker"] = (
+                        f"Original topic: {initial_input}\n\n{speaker_response}"
+                    )
 
             final_status_msg = f"{run_mode_desc} conversation ('{mode}' mode) completed after {num_rounds} rounds."
             logger.info(final_status_msg)

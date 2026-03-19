@@ -517,10 +517,15 @@ def _render_round_separator(round_num: int) -> str:
     )
 
 
-def _render_message(role: str, content: str, round_num: int = 0) -> str:
+def _render_message(role: str, content: str, round_num: int = 0, intent: str = "") -> str:
     """Render a philosopher or user message as a chat turn."""
     style = _get_style(role)
-    meta = f"Round {round_num}" if round_num > 0 else ""
+    meta_parts = []
+    if round_num > 0:
+        meta_parts.append(f"Round {round_num}")
+    if intent:
+        meta_parts.append(intent)
+    meta = " &middot; ".join(meta_parts)
     border_color = style.get("border", style["color"])
     return (
         f'<div class="phd-turn">'
@@ -759,6 +764,16 @@ def display_settings_popover(model_info: Dict[str, str]):
             help="One round = one response from each philosopher.",
         )
 
+        st.slider(
+            "Verbosity (max tokens):",
+            min_value=100,
+            max_value=800,
+            step=50,
+            key="max_tokens",
+            help="Controls response length. Lower = more concise, higher = more expansive. "
+                 "Default config values are used when set to 0.",
+        )
+
         # --- Display Section ---
         st.markdown('<div class="ws-settings-section">Display</div>', unsafe_allow_html=True)
 
@@ -825,7 +840,8 @@ def display_conversation(
                 current_round = round_num
                 html_parts.append(_render_round_separator(round_num))
 
-            html_parts.append(_render_message(role, content, round_num))
+            intent = msg.get("intent", "")
+            html_parts.append(_render_message(role, content, round_num, intent=intent))
             continue
 
         # --- System messages ---

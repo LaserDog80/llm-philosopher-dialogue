@@ -3,6 +3,7 @@
 import logging
 from typing import List, Dict, Any
 from core.config import load_llm_config_for_persona
+from core.registry import get_display_names
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -44,7 +45,8 @@ def format_conversation_for_translation(messages: List[Dict[str, Any]]) -> str:
         content = message.get("content", "")
         
         # We only want to translate the actual dialogue
-        if role not in ["USER", "SOCRATES", "CONFUCIUS"]:
+        valid_roles = {"USER"} | {name.upper() for name in get_display_names()}
+        if role not in valid_roles:
             continue
             
         if role == "USER":

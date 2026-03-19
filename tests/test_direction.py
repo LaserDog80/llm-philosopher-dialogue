@@ -4,7 +4,8 @@ import time
 import pytest
 from unittest.mock import patch, MagicMock, call
 
-from direction import Director, MAX_RETRIES
+from direction import Director
+from core.utils import MAX_RETRIES
 
 
 # ---------------------------------------------------------------------------
@@ -56,13 +57,13 @@ class TestRobustInvoke:
         assert result == "Visible response"
         assert monologue == "internal"
 
-    @patch("direction.time.sleep")  # skip actual sleep in tests
+    @patch("core.utils.time.sleep")  # skip actual sleep in tests
     def test_retry_then_success(self, mock_sleep):
         chain = _make_mock_chain([Exception("timeout"), "recovered"])
         result, monologue = self.director._robust_invoke(chain, {"input": "test"}, "TestActor", 1)
         assert result == "recovered"
 
-    @patch("direction.time.sleep")
+    @patch("core.utils.time.sleep")
     def test_permanent_failure(self, mock_sleep):
         chain = _make_mock_chain([Exception("fail")] * MAX_RETRIES)
         result, monologue = self.director._robust_invoke(chain, {"input": "test"}, "TestActor", 1)

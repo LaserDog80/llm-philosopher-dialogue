@@ -11,6 +11,9 @@ from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
+# Load .env once at module import time, not on every persona config load
+load_dotenv()
+
 DEFAULT_MODEL = "meta-llama/Meta-Llama-3.1-70B-Instruct"
 DEFAULT_TIMEOUT = 60
 DEFAULT_TEMPERATURE = 0.7
@@ -70,14 +73,13 @@ def load_llm_config_for_persona(
     mode: str = "philosophy",
     config_path: str = "llm_config.json",
     prompt_overrides: Optional[Dict[str, str]] = None,
+    max_tokens_override: Optional[int] = None,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
 
     Returns (ChatOpenAI instance, effective_system_prompt) or (None, None).
     """
-    load_dotenv()
-
     api_key = os.getenv("NEBIUS_API_KEY")
     base_url = os.getenv("NEBIUS_API_BASE")
     if not api_key or not base_url:
@@ -112,7 +114,7 @@ def load_llm_config_for_persona(
         "request_timeout": params.get("request_timeout", DEFAULT_TIMEOUT),
         "temperature": params.get("temperature", DEFAULT_TEMPERATURE),
     }
-    max_tokens = params.get("max_tokens", DEFAULT_MAX_TOKENS)
+    max_tokens = max_tokens_override or params.get("max_tokens", DEFAULT_MAX_TOKENS)
     if max_tokens is not None:
         llm_kwargs["max_tokens"] = max_tokens
     top_p = params.get("top_p", DEFAULT_TOP_P)

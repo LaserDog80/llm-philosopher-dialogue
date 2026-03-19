@@ -7,7 +7,6 @@
 import logging
 import os
 import sqlite3
-import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict
 
@@ -15,14 +14,11 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from core.persona import create_chain
-from core.utils import extract_and_clean, parse_direction_tag
+from core.utils import extract_and_clean, parse_direction_tag, robust_invoke
 from core.memory import ConversationMemory, PhilosopherMemory
 from core.registry import get_philosopher_ids, get_philosopher
 
 logger = logging.getLogger(__name__)
-
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
 
 DEFAULT_DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data", "conversations.db"
@@ -51,6 +47,7 @@ class DialogueState(TypedDict, total=False):
     mode: str                # philosophy or bio
     topic: str               # Original user question
     turn_count: int          # Total turns taken so far
+    max_tokens: int          # Runtime max_tokens override (from verbosity slider)
     is_complete: bool
     error: str
 
@@ -58,33 +55,6 @@ class DialogueState(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 # Node functions
 # ---------------------------------------------------------------------------
-
-def _robust_invoke(chain: Any, input_dict: Dict, actor_name: str, round_num: int) -> Tuple[Optional[str], Optional[str]]:
-    """Invoke a chain with retry logic. Returns (clean_response, monologue)."""
-    if chain is None:
-        logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None.")
-        return None, None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            logger.info(f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES})")
-            start_time = time.time()
-            raw = chain.invoke(input_dict)
-            raw_str = str(raw) if raw is not None else None
-            elapsed = time.time() - start_time
-            logger.info(f"Round {round_num}: {actor_name} responded in {elapsed:.2f}s.")
-            if raw_str is not None and raw_str.strip():
-                return extract_and_clean(raw_str)
-            elif raw_str == "":
-                return "", None
-            else:
-                raise ValueError(f"Empty response from {actor_name}")
-        except Exception as e:
-            logger.error(f"Round {round_num}: {actor_name} failed (Attempt {attempt}): {e}", exc_info=True)
-            if attempt == MAX_RETRIES:
-                return None, None
-            time.sleep(RETRY_DELAY)
-    return None, None
-
 
 def philosopher_node(state: DialogueState) -> Dict:
     """Invoke the next speaker's chain and parse direction signals."""
@@ -97,37 +67,44 @@ def philosopher_node(state: DialogueState) -> Dict:
     pcfg = get_philosopher(next_id)
     speaker_name = pcfg.display_name if pcfg else next_id
 
-    # Load chain
-    chain = create_chain(next_id, mode=mode)
+    # Load chain (with optional max_tokens override from verbosity slider)
+    max_tokens = state.get("max_tokens", 0) or None
+    chain = create_chain(next_id, mode=mode, max_tokens_override=max_tokens)
     if chain is None:
         return {"error": f"Failed to load chain for {speaker_name}", "is_complete": True}
 
     # Build memory from serialized turns
     memory = ConversationMemory.from_list(state.get("memory_turns", []))
 
-    # Build input content
+    # Build input content — always include the original topic for context
+    topic = state["topic"]
     if turn_count == 0:
-        input_content = state["topic"]
+        input_content = topic
     else:
         last_response = state.get("last_response", "")
-        input_content = last_response
+        input_content = f"Original topic: {topic}\n\n{last_response}"
 
-    # Inject long-term memory context
+    # Inject long-term memory context with usage instructions
     long_term_ctx = ""
     try:
         phil_mem = PhilosopherMemory(next_id)
-        long_term_ctx = phil_mem.get_context_for_prompt(state["topic"], limit=3)
+        long_term_ctx = phil_mem.get_context_for_prompt(topic, limit=3)
     except Exception as e:
         logger.warning(f"Long-term memory lookup failed for {next_id}: {e}")
 
     if long_term_ctx:
-        input_content = f"{long_term_ctx}\n\n{input_content}"
+        input_content = (
+            f"{long_term_ctx}\n"
+            f"(Use the above recalled positions to maintain consistency "
+            f"with your prior views, or explain how your thinking has evolved.)\n\n"
+            f"{input_content}"
+        )
 
-    # Invoke
-    history = memory.get_history_for_chain()
+    # Invoke with full conversation history (no sliding window)
+    history = memory.get_full_history_for_chain()
     invoke_input = {"input": input_content, "chat_history": history}
 
-    response, monologue = _robust_invoke(chain, invoke_input, speaker_name, current_round)
+    response, monologue = robust_invoke(chain, invoke_input, speaker_name, current_round)
 
     if response is None:
         return {
@@ -158,8 +135,9 @@ def philosopher_node(state: DialogueState) -> Dict:
     # Update memory
     memory.add_turn(speaker_name, cleaned_response, current_round)
 
-    # Build message
-    msg = {"role": speaker_name, "content": cleaned_response, "monologue": monologue}
+    # Build message (include intent for UI display)
+    intent = direction.get("intent", "address")
+    msg = {"role": speaker_name, "content": cleaned_response, "monologue": monologue, "intent": intent}
     messages = state.get("messages", []) + [msg]
 
     return {
@@ -308,6 +286,7 @@ def run_agentic_conversation(
     db_path: str = DEFAULT_DB_PATH,
     thread_id: Optional[str] = None,
     on_status: Optional[Callable] = None,
+    max_tokens: int = 0,
 ) -> Tuple[List[Dict[str, Any]], str, bool, str]:
     """Run a self-organizing philosopher conversation.
 
@@ -366,6 +345,7 @@ def run_agentic_conversation(
         "mode": mode.lower(),
         "topic": topic,
         "turn_count": 0,
+        "max_tokens": max_tokens,
         "is_complete": False,
         "error": "",
     }
@@ -398,21 +378,28 @@ def run_agentic_conversation(
 
 
 def _record_positions(state: DialogueState, topic: str, session_id: str) -> None:
-    """After a conversation, record each philosopher's positions in long-term memory."""
+    """After a conversation, record each philosopher's final position in long-term memory.
+
+    Only records the last message from each philosopher to avoid redundant entries.
+    Stores the full response (up to 500 chars) rather than blindly truncating.
+    """
     try:
+        # Collect last message per philosopher to avoid duplicates
+        last_msg_by_role: Dict[str, str] = {}
         for msg in state.get("messages", []):
             role = msg.get("role", "")
             content = msg.get("content", "")
             if role == "system" or not content:
                 continue
-            # Find the philosopher ID for this role (display name)
+            last_msg_by_role[role] = content
+
+        for role, content in last_msg_by_role.items():
             for pid in get_philosopher_ids():
                 pcfg = get_philosopher(pid)
                 if pcfg and pcfg.display_name == role:
                     mem = PhilosopherMemory(pid)
-                    # Truncate to first 200 chars as position summary
-                    summary = content[:200].strip()
-                    if len(content) > 200:
+                    summary = content[:500].strip()
+                    if len(content) > 500:
                         summary += "..."
                     mem.record_position(topic, summary, session_id)
                     break

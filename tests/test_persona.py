@@ -44,4 +44,6 @@ class TestCreateChain:
         overrides = {"socrates_philosophy": "Custom prompt."}
         chain = create_chain("socrates", mode="philosophy", prompt_overrides=overrides)
         assert chain is not None
-        mock_load.assert_called_once_with("socrates", mode="philosophy", prompt_overrides=overrides)
+        mock_load.assert_called_once_with(
+            "socrates", mode="philosophy", prompt_overrides=overrides, max_tokens_override=None,
+        )

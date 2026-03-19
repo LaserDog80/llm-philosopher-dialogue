@@ -101,3 +101,18 @@ class TestParseDirectionTag:
         cleaned, info = parse_direction_tag(text)
         assert info["next"] == "Sima Qian"
         assert info["intent"] == "address"
+
+    def test_without_intent_keyword(self):
+        """LLMs sometimes omit the INTENT: keyword — regex should still match."""
+        text = "I sought harmony, yes.\n[NEXT: Confucius | reflect]"
+        cleaned, info = parse_direction_tag(text)
+        assert cleaned == "I sought harmony, yes."
+        assert info["next"] == "Confucius"
+        assert info["intent"] == "reflect"
+
+    def test_without_intent_keyword_challenge(self):
+        text = "Did you not see?\n[NEXT: Socrates | challenge]"
+        cleaned, info = parse_direction_tag(text)
+        assert "[NEXT:" not in cleaned
+        assert info["next"] == "Socrates"
+        assert info["intent"] == "challenge"
