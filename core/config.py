@@ -11,6 +11,9 @@ from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
+# Load .env once at module import time, not on every persona config load
+load_dotenv()
+
 DEFAULT_MODEL = "meta-llama/Meta-Llama-3.1-70B-Instruct"
 DEFAULT_TIMEOUT = 60
 DEFAULT_TEMPERATURE = 0.7
@@ -76,8 +79,6 @@ def load_llm_config_for_persona(
 
     Returns (ChatOpenAI instance, effective_system_prompt) or (None, None).
     """
-    load_dotenv()
-
     api_key = os.getenv("NEBIUS_API_KEY")
     base_url = os.getenv("NEBIUS_API_BASE")
     if not api_key or not base_url:

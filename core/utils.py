@@ -1,7 +1,14 @@
-# core/utils.py — Shared utilities (think-block extraction, text cleaning, direction tags).
+# core/utils.py — Shared utilities (think-block extraction, text cleaning, direction tags, LLM invocation).
 
+import logging
 import re
-from typing import Optional, Tuple, Dict
+import time
+from typing import Any, Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
 
 THINK_BLOCK_REGEX = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
 
@@ -36,6 +43,44 @@ def extract_and_clean(raw_response: Optional[str]) -> Tuple[str, Optional[str]]:
     if not cleaned and raw_response:
         return "", monologue
     return cleaned, monologue
+
+
+def robust_invoke(
+    chain: Any, input_dict: Dict, actor_name: str, round_num: int
+) -> Tuple[Optional[str], Optional[str]]:
+    """Invoke a chain with retry logic. Returns (clean_response, monologue).
+
+    Shared between the LangGraph engine (core/graph.py) and the legacy
+    Director class (direction.py).
+    """
+    if chain is None:
+        logger.error(f"Round {round_num}: Cannot invoke {actor_name}, chain is None.")
+        return None, None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            logger.info(
+                f"Round {round_num}: Requesting {actor_name} (Attempt {attempt}/{MAX_RETRIES})"
+            )
+            start_time = time.time()
+            raw = chain.invoke(input_dict)
+            raw_str = str(raw) if raw is not None else None
+            elapsed = time.time() - start_time
+            logger.info(f"Round {round_num}: {actor_name} responded in {elapsed:.2f}s.")
+            if raw_str is not None and raw_str.strip():
+                return extract_and_clean(raw_str)
+            elif raw_str == "":
+                return "", None
+            else:
+                raise ValueError(f"Empty response from {actor_name}")
+        except Exception as e:
+            logger.error(
+                f"Round {round_num}: {actor_name} failed (Attempt {attempt}): {e}",
+                exc_info=True,
+            )
+            if attempt == MAX_RETRIES:
+                return None, None
+            time.sleep(RETRY_DELAY)
+    return None, None
 
 
 def parse_direction_tag(text: str) -> Tuple[str, Dict[str, str]]:

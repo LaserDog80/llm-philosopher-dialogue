@@ -30,6 +30,7 @@ if parent_dir not in sys.path:
 
 try:
     from llm_loader import load_default_prompt_text
+    from core.registry import get_display_names
     import gui
 except ImportError as e:
     st.error(f"Import error: {e}")
@@ -61,7 +62,7 @@ st.markdown(
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PERSONAS = ["Socrates", "Confucius", "Moderator"]
+PERSONAS = get_display_names() + ["Moderator"]
 MODES = ["Philosophy", "Bio"]
 FALLBACK_TEXT = "Default prompt file not found."
 

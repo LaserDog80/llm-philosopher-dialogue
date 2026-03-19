@@ -182,7 +182,7 @@ def _run_initial_conversation(prompt: str) -> None:
         for m in gen_msgs:
             _write_log(m)
 
-        st.session_state.conversation_completed = True if success else True
+        st.session_state.conversation_completed = success
         if success:
             _maybe_translate(mode)
         _close_log()
