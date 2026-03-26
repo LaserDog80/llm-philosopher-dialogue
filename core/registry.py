@@ -6,7 +6,7 @@
 import json
 import os
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Dict, List, Optional
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "philosophers.json"
 
 
-@dataclass(frozen=True)
+@dataclass
 class PhilosopherConfig:
     id: str
     display_name: str
@@ -24,6 +24,7 @@ class PhilosopherConfig:
     bg: str
     text_color: str
     description: str = ""
+    voice_profile: dict = field(default_factory=dict)
 
 
 def _find_config_file(config_path: str) -> Optional[str]:

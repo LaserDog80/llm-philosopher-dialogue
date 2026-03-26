@@ -9,6 +9,8 @@ from typing import Optional, Tuple, Any, Dict
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
+from core.registry import get_philosopher
+
 logger = logging.getLogger(__name__)
 
 # Load .env once at module import time, not on every persona config load
@@ -74,6 +76,7 @@ def load_llm_config_for_persona(
     config_path: str = "llm_config.json",
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
+    personality_notes: Optional[str] = None,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
@@ -104,6 +107,31 @@ def load_llm_config_for_persona(
         if isinstance(override_text, str) and override_text.strip():
             effective_prompt = override_text
             logger.info(f"Using overridden prompt for {override_key}")
+
+    # Append voice directives from philosopher registry
+    pcfg = get_philosopher(persona_name)
+    if pcfg and pcfg.voice_profile:
+        vp = pcfg.voice_profile
+        directives = "\n\n--- VOICE DIRECTIVES ---\n"
+        if vp.get("sentence_range"):
+            directives += f"Response length: {vp['sentence_range']} sentences.\n"
+        if vp.get("style_keywords"):
+            directives += f"Style: {', '.join(vp['style_keywords'])}.\n"
+        if vp.get("personality_summary"):
+            directives += f"Personality: {vp['personality_summary']}\n"
+        if vp.get("example_utterances"):
+            directives += "Speak like these examples:\n"
+            for ex in vp["example_utterances"]:
+                directives += f'- "{ex}"\n'
+        effective_prompt += directives
+
+    # Append user personality notes if provided
+    if personality_notes and personality_notes.strip():
+        effective_prompt += (
+            f"\n\n--- USER CHARACTER NOTES ---\n"
+            f"{personality_notes.strip()}\n"
+            f"Incorporate these directives into your speaking style.\n"
+        )
 
     # Build LLM kwargs
     model_name = params.get("model_name", DEFAULT_MODEL)

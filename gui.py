@@ -764,14 +764,42 @@ def display_settings_popover(model_info: Dict[str, str]):
             help="One round = one response from each philosopher.",
         )
 
+        _p1_name = st.session_state.get("philosopher_1", "Philosopher 1")
+        _p2_name = st.session_state.get("philosopher_2", "Philosopher 2")
+
         st.slider(
-            "Verbosity (max tokens):",
+            f"Verbosity — {_p1_name}:",
             min_value=100,
             max_value=800,
             step=50,
-            key="max_tokens",
-            help="Controls response length. Lower = more concise, higher = more expansive. "
-                 "Default config values are used when set to 0.",
+            key="max_tokens_p1",
+            help=f"Controls {_p1_name}'s response length.",
+        )
+        st.slider(
+            f"Verbosity — {_p2_name}:",
+            min_value=100,
+            max_value=800,
+            step=50,
+            key="max_tokens_p2",
+            help=f"Controls {_p2_name}'s response length.",
+        )
+
+        # --- Character Notes Section ---
+        st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
+
+        st.text_area(
+            f"Notes for {_p1_name}:",
+            key="personality_notes_p1",
+            height=80,
+            placeholder="e.g. 'Be more gossipy, use more parenthetical asides'",
+            help="Free-form personality directives injected into the system prompt.",
+        )
+        st.text_area(
+            f"Notes for {_p2_name}:",
+            key="personality_notes_p2",
+            height=80,
+            placeholder="e.g. 'Be more restrained, let emotion show through brevity'",
+            help="Free-form personality directives injected into the system prompt.",
         )
 
         # --- Display Section ---

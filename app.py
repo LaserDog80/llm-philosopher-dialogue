@@ -80,7 +80,10 @@ _DEFAULTS: Dict[str, Any] = {
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "conversation_style": DEFAULT_CONVERSATION_STYLE,
-    "max_tokens": 400,
+    "max_tokens_p1": 400,
+    "max_tokens_p2": 400,
+    "personality_notes_p1": "",
+    "personality_notes_p2": "",
     "run_conversation_flag": False,
     "conversation_completed": False,
     "prompt_overrides": {},
@@ -176,14 +179,20 @@ def _run_initial_conversation(prompt: str) -> None:
             unsafe_allow_html=True,
         )
 
-        max_tokens = st.session_state.get("max_tokens", 0)
+        max_tokens_p1 = st.session_state.get("max_tokens_p1", 0)
+        max_tokens_p2 = st.session_state.get("max_tokens_p2", 0)
+        personality_notes_p1 = st.session_state.get("personality_notes_p1", "")
+        personality_notes_p2 = st.session_state.get("personality_notes_p2", "")
         gen_msgs, final_status, success, thread_id = run_agentic_conversation(
             topic=prompt,
             philosopher_1=starter,
             philosopher_2=philosopher_2,
             num_rounds=num_rounds,
             mode=mode,
-            max_tokens=max_tokens,
+            max_tokens_p1=max_tokens_p1,
+            max_tokens_p2=max_tokens_p2,
+            personality_notes_p1=personality_notes_p1,
+            personality_notes_p2=personality_notes_p2,
         )
         logger.info(f"Agentic conversation finished. success={success}, status={final_status}")
         thinking_placeholder.empty()
