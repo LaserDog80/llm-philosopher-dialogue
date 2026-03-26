@@ -89,11 +89,17 @@ def philosopher_node(state: DialogueState) -> Dict:
 
     # Build input content — always include the original topic for context
     topic = state["topic"]
+    total_rounds = state.get("total_rounds", 3)
     if turn_count == 0:
         input_content = topic
     else:
         last_response = state.get("last_response", "")
-        input_content = f"Original topic: {topic}\n\n{last_response}"
+        input_content = (
+            f"Original topic: {topic}\n"
+            f"[Round {current_round} of {total_rounds}. "
+            f"Build on what has been said — do not repeat earlier points.]\n\n"
+            f"{last_response}"
+        )
 
     # Inject long-term memory context with usage instructions
     long_term_ctx = ""

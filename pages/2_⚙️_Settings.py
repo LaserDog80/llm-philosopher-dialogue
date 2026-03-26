@@ -38,7 +38,8 @@ if parent_dir not in sys.path:
 
 try:
     from llm_loader import load_default_prompt_text
-    from core.registry import get_display_names
+    from core.registry import get_display_names, get_philosopher
+    from core.config import load_llm_params
     import gui
 except ImportError as e:
     st.error(f"Import error: {e}")
@@ -160,6 +161,58 @@ with col_c:
             )
             st.toast(f"Override cleared for {selected_persona} ({selected_mode}).")
             st.rerun()
+
+# ---------------------------------------------------------------------------
+# Effective Configuration Viewer
+# ---------------------------------------------------------------------------
+with st.expander(f"View Effective Configuration — {selected_persona}"):
+    # LLM parameters
+    params = load_llm_params(persona_key)
+    if params:
+        st.markdown("**LLM Parameters**")
+        param_display = {
+            "Model": params.get("model_name", "—"),
+            "Temperature": params.get("temperature", "—"),
+            "Max Tokens": params.get("max_tokens", "—"),
+            "Top P": params.get("top_p", "—"),
+            "Presence Penalty": params.get("presence_penalty", 0.0),
+            "Frequency Penalty": params.get("frequency_penalty", 0.0),
+            "Timeout": f"{params.get('request_timeout', '—')}s",
+        }
+        for label, val in param_display.items():
+            st.caption(f"**{label}:** {val}")
+    else:
+        st.caption("No LLM parameters found.")
+
+    # Voice profile
+    pcfg = get_philosopher(persona_key)
+    if pcfg and pcfg.voice_profile:
+        st.markdown("**Voice Profile**")
+        vp = pcfg.voice_profile
+        if vp.get("sentence_range"):
+            st.caption(f"**Sentence Range:** {vp['sentence_range']}")
+        if vp.get("style_keywords"):
+            st.caption(f"**Style:** {', '.join(vp['style_keywords'])}")
+        if vp.get("personality_summary"):
+            st.caption(f"**Personality:** {vp['personality_summary']}")
+        if vp.get("example_utterances"):
+            st.caption("**Example Utterances:**")
+            for ex in vp["example_utterances"]:
+                st.caption(f'  — "{ex}"')
+
+    # Active user personality notes
+    notes_key = None
+    p1 = st.session_state.get("philosopher_1", "")
+    p2 = st.session_state.get("philosopher_2", "")
+    if selected_persona == p1:
+        notes_key = "personality_notes_p1"
+    elif selected_persona == p2:
+        notes_key = "personality_notes_p2"
+    if notes_key:
+        notes = st.session_state.get(notes_key, "")
+        if notes and notes.strip():
+            st.markdown("**Active Character Notes**")
+            st.caption(notes.strip())
 
 # ---------------------------------------------------------------------------
 # Footer
