@@ -786,28 +786,32 @@ def display_settings_popover(model_info: Dict[str, str]):
             if st.session_state.pop(reset_flag, False):
                 st.session_state[slider_key] = _get_default_tokens(phil_name)
 
-        for label, slider_key, phil_name in [
-            (f"Verbosity — {_p1_name}", "max_tokens_p1", _p1_name),
-            (f"Verbosity — {_p2_name}", "max_tokens_p2", _p2_name),
-        ]:
-            default_tokens = _get_default_tokens(phil_name)
-            col_slider, col_reset = st.columns([5, 1])
-            with col_slider:
-                current_val = st.session_state.get(slider_key, default_tokens)
-                sentence_hint = _tokens_to_sentence_range(current_val)
-                st.slider(
-                    f"{label} ({sentence_hint} sentences):",
-                    min_value=100,
-                    max_value=800,
-                    step=50,
-                    key=slider_key,
-                )
-            with col_reset:
-                st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                if st.button("↺", key=f"reset_{slider_key}",
-                             help=f"Reset to {phil_name}'s default ({default_tokens})"):
-                    st.session_state[f"_pending_reset_{slider_key}"] = True
-                    st.rerun()
+        with st.expander("Verbosity (experimental)", expanded=False):
+            st.caption("Hint only — use Shorter/Longer buttons after a conversation for reliable control.")
+            for label, slider_key, phil_name in [
+                (f"Verbosity — {_p1_name}", "max_tokens_p1", _p1_name),
+                (f"Verbosity — {_p2_name}", "max_tokens_p2", _p2_name),
+            ]:
+                default_tokens = _get_default_tokens(phil_name)
+                col_slider, col_reset = st.columns([5, 1])
+                with col_slider:
+                    current_val = st.session_state.get(slider_key, default_tokens)
+                    sentence_hint = _tokens_to_sentence_range(current_val)
+                    st.slider(
+                        f"{label} ({sentence_hint} sentences):",
+                        min_value=100,
+                        max_value=800,
+                        step=50,
+                        key=slider_key,
+                        disabled=True,
+                    )
+                with col_reset:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    if st.button("↺", key=f"reset_{slider_key}",
+                                 help=f"Reset to {phil_name}'s default ({default_tokens})",
+                                 disabled=True):
+                        st.session_state[f"_pending_reset_{slider_key}"] = True
+                        st.rerun()
 
         # --- Character Notes Section ---
         st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
@@ -941,21 +945,21 @@ def display_conversation(
 
             # Editor buttons (only after conversation is complete, not on translated view)
             if conversation_completed and not is_translated_view:
-                _bcol1, _bcol2, _bcol3 = st.columns([1, 1, 10])
-                with _bcol1:
-                    if st.button("Shorter", key=f"edit_shorter_{msg_idx}",
-                                 type="tertiary"):
-                        st.session_state["_editor_request"] = {
-                            "index": msg_idx, "direction": "shorter"
-                        }
-                        st.rerun()
-                with _bcol2:
-                    if st.button("Longer", key=f"edit_longer_{msg_idx}",
-                                 type="tertiary"):
-                        st.session_state["_editor_request"] = {
-                            "index": msg_idx, "direction": "longer"
-                        }
-                        st.rerun()
+                _edit_left, _edit_spacer = st.columns([3, 9])
+                with _edit_left:
+                    _eb1, _eb2 = st.columns(2)
+                    with _eb1:
+                        if st.button("Shorter", key=f"edit_shorter_{msg_idx}"):
+                            st.session_state["_editor_request"] = {
+                                "index": msg_idx, "direction": "shorter"
+                            }
+                            st.rerun()
+                    with _eb2:
+                        if st.button("Longer", key=f"edit_longer_{msg_idx}"):
+                            st.session_state["_editor_request"] = {
+                                "index": msg_idx, "direction": "longer"
+                            }
+                            st.rerun()
 
             continue
 

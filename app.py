@@ -313,17 +313,31 @@ if _editor_req and st.session_state.get("conversation_completed"):
     messages = st.session_state.messages
 
     if 0 <= msg_idx < len(messages):
+        msg = messages[msg_idx]
+
+        # Store original on first edit so we always rewrite from the source
+        if "_original_content" not in msg:
+            msg["_original_content"] = msg["content"]
+        original = msg["_original_content"]
+
+        # Compute new word count target (stepping from current target)
+        from core.editor import compute_target_words, rewrite_message
+        current_target = msg.get("_target_words", 0)
+        new_target = compute_target_words(original, current_target, direction)
+        msg["_target_words"] = new_target
+
         thinking_placeholder = st.empty()
         thinking_placeholder.markdown(
-            gui.render_thinking_indicator(f"Editor rewriting ({direction})..."),
+            gui.render_thinking_indicator(
+                f"Editor rewriting to ~{new_target} words..."
+            ),
             unsafe_allow_html=True,
         )
         try:
-            from core.editor import rewrite_message
-            rewritten = rewrite_message(messages, msg_idx, direction)
+            rewritten = rewrite_message(messages, msg_idx, new_target, original)
             if rewritten:
-                st.session_state.messages[msg_idx]["content"] = rewritten
-                logger.info(f"Editor rewrote message {msg_idx} ({direction})")
+                msg["content"] = rewritten
+                logger.info(f"Editor rewrote message {msg_idx} to ~{new_target} words")
             else:
                 st.warning("Editor could not rewrite the message.")
         except Exception as e:
