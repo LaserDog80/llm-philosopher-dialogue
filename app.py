@@ -75,13 +75,13 @@ _DEFAULTS: Dict[str, Any] = {
     "log_content": None,
     "current_log_filename": None,
     "show_monologue_cb": False,
-    "philosopher_1": "Socrates",
-    "philosopher_2": "Confucius",
+    "philosopher_1": "Herodotus",
+    "philosopher_2": "Sima Qian",
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "conversation_style": DEFAULT_CONVERSATION_STYLE,
-    "max_tokens_p1": 350,   # Socrates default from voice_profile
-    "max_tokens_p2": 300,   # Confucius default from voice_profile
+    "max_tokens_p1": 600,   # Herodotus default from voice_profile
+    "max_tokens_p2": 350,   # Sima Qian default from voice_profile
     "personality_notes_p1": "",
     "personality_notes_p2": "",
     "run_conversation_flag": False,
@@ -320,6 +320,7 @@ if _editor_reset_idx is not None and st.session_state.get("conversation_complete
             if slider_key in st.session_state:
                 del st.session_state[slider_key]
             logger.info(f"Editor reset message {_editor_reset_idx} to original")
+            st.session_state["_scroll_to_msg"] = _editor_reset_idx
 
 # Handle editor rewrite requests (percentage-based)
 _editor_req = st.session_state.pop("_editor_request", None)
@@ -354,6 +355,7 @@ if _editor_req and st.session_state.get("conversation_completed"):
                 msg["content"] = rewritten
                 msg["_target_words"] = target_words
                 logger.info(f"Editor rewrote message {msg_idx} to ~{target_words} words ({pct}%)")
+                st.session_state["_scroll_to_msg"] = msg_idx
             else:
                 st.warning("Editor could not rewrite the message.")
         except Exception as e:

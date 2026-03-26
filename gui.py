@@ -943,6 +943,19 @@ def display_conversation(
                 st.markdown("".join(html_parts), unsafe_allow_html=True)
                 html_parts = ['<div class="phd-container">']
 
+            # Scroll anchor for editor — emitted for every philosopher message
+            _anchor_id = f"editor-msg-{msg_idx}"
+            st.markdown(f'<div id="{_anchor_id}"></div>', unsafe_allow_html=True)
+
+            # Auto-scroll to this message if it was just edited
+            _scroll_target = st.session_state.pop("_scroll_to_msg", None)
+            if _scroll_target == msg_idx:
+                st.markdown(
+                    f'<script>document.getElementById("{_anchor_id}")'
+                    f'.scrollIntoView({{behavior: "smooth", block: "center"}});</script>',
+                    unsafe_allow_html=True,
+                )
+
             # Editor controls (only after conversation is complete, not on translated view)
             if conversation_completed and not is_translated_view:
                 _slider_key = f"_editor_pct_{msg_idx}"
