@@ -25,4 +25,4 @@ dist/
 .vscode/
 .idea/
 .DS_Store
-Thumbs.db
+Thumbs.dbtests/test_logs/
