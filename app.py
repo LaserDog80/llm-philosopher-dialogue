@@ -306,38 +306,54 @@ if (
 # ---------------------------------------------------------------------------
 # Handle editor rewrite requests
 # ---------------------------------------------------------------------------
+# Handle editor reset requests (restore original text)
+_editor_reset_idx = st.session_state.pop("_editor_reset", None)
+if _editor_reset_idx is not None and st.session_state.get("conversation_completed"):
+    messages = st.session_state.messages
+    if 0 <= _editor_reset_idx < len(messages):
+        msg = messages[_editor_reset_idx]
+        if "_original_content" in msg:
+            msg["content"] = msg.pop("_original_content")
+            msg.pop("_target_words", None)
+            # Reset the slider to 100%
+            slider_key = f"_editor_pct_{_editor_reset_idx}"
+            if slider_key in st.session_state:
+                del st.session_state[slider_key]
+            logger.info(f"Editor reset message {_editor_reset_idx} to original")
+
+# Handle editor rewrite requests (percentage-based)
 _editor_req = st.session_state.pop("_editor_request", None)
 if _editor_req and st.session_state.get("conversation_completed"):
     msg_idx = _editor_req["index"]
-    direction = _editor_req["direction"]
+    pct = _editor_req["pct"]
     messages = st.session_state.messages
 
     if 0 <= msg_idx < len(messages):
         msg = messages[msg_idx]
 
-        # Store original on first edit so we always rewrite from the source
+        # Store original on first edit — this is the permanent source of truth
         if "_original_content" not in msg:
             msg["_original_content"] = msg["content"]
         original = msg["_original_content"]
 
-        # Compute new word count target (stepping from current target)
-        from core.editor import compute_target_words, rewrite_message
-        current_target = msg.get("_target_words", 0)
-        new_target = compute_target_words(original, current_target, direction)
-        msg["_target_words"] = new_target
+        # Compute target word count from percentage of original
+        original_words = len(original.split())
+        target_words = max(15, int(original_words * pct / 100))
 
         thinking_placeholder = st.empty()
         thinking_placeholder.markdown(
             gui.render_thinking_indicator(
-                f"Editor rewriting to ~{new_target} words..."
+                f"Editor rewriting to ~{target_words} words ({pct}%)..."
             ),
             unsafe_allow_html=True,
         )
         try:
-            rewritten = rewrite_message(messages, msg_idx, new_target, original)
+            from core.editor import rewrite_message
+            rewritten = rewrite_message(messages, msg_idx, target_words, original)
             if rewritten:
                 msg["content"] = rewritten
-                logger.info(f"Editor rewrote message {msg_idx} to ~{new_target} words")
+                msg["_target_words"] = target_words
+                logger.info(f"Editor rewrote message {msg_idx} to ~{target_words} words ({pct}%)")
             else:
                 st.warning("Editor could not rewrite the message.")
         except Exception as e:

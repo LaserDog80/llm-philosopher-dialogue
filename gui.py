@@ -943,23 +943,44 @@ def display_conversation(
                 st.markdown("".join(html_parts), unsafe_allow_html=True)
                 html_parts = ['<div class="phd-container">']
 
-            # Editor buttons (only after conversation is complete, not on translated view)
+            # Editor controls (only after conversation is complete, not on translated view)
             if conversation_completed and not is_translated_view:
-                _edit_left, _edit_spacer = st.columns([3, 9])
-                with _edit_left:
-                    _eb1, _eb2 = st.columns(2)
-                    with _eb1:
-                        if st.button("Shorter", key=f"edit_shorter_{msg_idx}"):
-                            st.session_state["_editor_request"] = {
-                                "index": msg_idx, "direction": "shorter"
-                            }
-                            st.rerun()
-                    with _eb2:
-                        if st.button("Longer", key=f"edit_longer_{msg_idx}"):
-                            st.session_state["_editor_request"] = {
-                                "index": msg_idx, "direction": "longer"
-                            }
-                            st.rerun()
+                _slider_key = f"_editor_pct_{msg_idx}"
+                # Initialize slider to 100% if not set
+                if _slider_key not in st.session_state:
+                    st.session_state[_slider_key] = 100
+
+                _col_slider, _col_apply, _col_reset = st.columns([6, 1, 1])
+                with _col_slider:
+                    st.slider(
+                        "Length",
+                        min_value=25,
+                        max_value=200,
+                        step=25,
+                        key=_slider_key,
+                        format="%d%%",
+                        label_visibility="collapsed",
+                    )
+                with _col_apply:
+                    _pct = st.session_state.get(_slider_key, 100)
+                    if st.button(
+                        "Apply" if _pct != 100 else "Apply",
+                        key=f"edit_apply_{msg_idx}",
+                        disabled=(_pct == 100),
+                    ):
+                        st.session_state["_editor_request"] = {
+                            "index": msg_idx, "pct": _pct
+                        }
+                        st.rerun()
+                with _col_reset:
+                    _has_edit = msg.get("_original_content") is not None
+                    if st.button(
+                        "Reset",
+                        key=f"edit_reset_{msg_idx}",
+                        disabled=not _has_edit,
+                    ):
+                        st.session_state["_editor_reset"] = msg_idx
+                        st.rerun()
 
             continue
 
