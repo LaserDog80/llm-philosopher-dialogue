@@ -9,6 +9,8 @@ from typing import Optional, Tuple, Any, Dict
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
+from core.registry import get_philosopher
+
 logger = logging.getLogger(__name__)
 
 # Load .env once at module import time, not on every persona config load
@@ -68,12 +70,34 @@ def load_llm_params(persona_name: str, config_path: str = "llm_config.json") -> 
         return {}
 
 
+def _tokens_to_sentence_range(max_tokens: int) -> str:
+    """Derive a sentence range from a max_tokens value.
+
+    This is the single source of truth for response length — the verbosity
+    slider sets max_tokens and this function translates it into a sentence
+    count for the system prompt.
+    """
+    if max_tokens <= 150:
+        return "1"
+    elif max_tokens <= 250:
+        return "1-2"
+    elif max_tokens <= 350:
+        return "2-3"
+    elif max_tokens <= 500:
+        return "3-5"
+    elif max_tokens <= 650:
+        return "4-6"
+    else:
+        return "5-8"
+
+
 def load_llm_config_for_persona(
     persona_name: str,
     mode: str = "philosophy",
     config_path: str = "llm_config.json",
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
+    personality_notes: Optional[str] = None,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
@@ -104,6 +128,40 @@ def load_llm_config_for_persona(
         if isinstance(override_text, str) and override_text.strip():
             effective_prompt = override_text
             logger.info(f"Using overridden prompt for {override_key}")
+
+    # Inject user personality notes BEFORE voice directives so they sit close
+    # to the base prompt and carry more weight.  Placed here, even gentle notes
+    # like "be cheerful" won't be drowned out by the voice profile examples.
+    if personality_notes and personality_notes.strip():
+        effective_prompt += (
+            f"\n\n--- USER CHARACTER NOTES (HIGHEST PRIORITY) ---\n"
+            f"The user has requested the following adjustments to your character.\n"
+            f"These OVERRIDE your default speaking style and voice. "
+            f"You MUST follow them in every response, even if they conflict "
+            f"with the personality description above.\n"
+            f">>> {personality_notes.strip()} <<<\n"
+        )
+
+    # Append voice directives from philosopher registry.
+    # The sentence range is derived from max_tokens (set by the verbosity slider)
+    # — this is the single source of truth for response length.
+    effective_max_tokens = max_tokens_override or params.get("max_tokens", DEFAULT_MAX_TOKENS)
+    pcfg = get_philosopher(persona_name)
+    if pcfg and pcfg.voice_profile:
+        vp = pcfg.voice_profile
+        directives = "\n\n--- VOICE DIRECTIVES ---\n"
+        if effective_max_tokens:
+            sentence_range = _tokens_to_sentence_range(effective_max_tokens)
+            directives += f"Respond in {sentence_range} sentences.\n"
+        if vp.get("style_keywords"):
+            directives += f"Style: {', '.join(vp['style_keywords'])}.\n"
+        if vp.get("personality_summary"):
+            directives += f"Personality: {vp['personality_summary']}\n"
+        if vp.get("example_utterances"):
+            directives += "Speak like these examples (adapt these to user character notes if provided):\n"
+            for ex in vp["example_utterances"]:
+                directives += f'- "{ex}"\n'
+        effective_prompt += directives
 
     # Build LLM kwargs
     model_name = params.get("model_name", DEFAULT_MODEL)

@@ -45,5 +45,6 @@ class TestCreateChain:
         chain = create_chain("socrates", mode="philosophy", prompt_overrides=overrides)
         assert chain is not None
         mock_load.assert_called_once_with(
-            "socrates", mode="philosophy", prompt_overrides=overrides, max_tokens_override=None,
+            "socrates", mode="philosophy", prompt_overrides=overrides,
+            max_tokens_override=None, personality_notes=None,
         )

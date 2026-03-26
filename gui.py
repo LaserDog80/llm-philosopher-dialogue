@@ -7,7 +7,8 @@ import logging
 import streamlit as st
 from typing import List, Dict, Any, Optional
 
-from core.registry import get_speaker_styles, get_display_names, get_philosopher_ids
+from core.registry import get_speaker_styles, get_display_names, get_philosopher_ids, get_philosopher
+from core.config import load_llm_params
 
 logger = logging.getLogger(__name__)
 
@@ -715,6 +716,8 @@ def get_model_info_from_config(config_path: str = "llm_config.json") -> Dict[str
         reg = load_registry()
         info: Dict[str, str] = {}
         for pid, pcfg in reg.items():
+            if pid == "moderator":
+                continue  # Moderator LLM is no longer used; routing is rule-based
             info[pcfg.display_name] = config.get(pid, {}).get("model_name", "Unknown")
         return info
     except Exception as e:
@@ -744,15 +747,11 @@ def display_settings_popover(model_info: Dict[str, str]):
             "Philosopher 1 (speaks first):",
             _philosopher_names,
             key="philosopher_1",
-            index=0,
         )
-        # Default philosopher 2 to second in the list (or first if only one)
-        default_p2_index = 1 if len(_philosopher_names) > 1 else 0
         st.selectbox(
             "Philosopher 2:",
             _philosopher_names,
             key="philosopher_2",
-            index=default_p2_index,
         )
 
         st.number_input(
@@ -764,14 +763,74 @@ def display_settings_popover(model_info: Dict[str, str]):
             help="One round = one response from each philosopher.",
         )
 
-        st.slider(
-            "Verbosity (max tokens):",
-            min_value=100,
-            max_value=800,
-            step=50,
-            key="max_tokens",
-            help="Controls response length. Lower = more concise, higher = more expansive. "
-                 "Default config values are used when set to 0.",
+        _p1_name = st.session_state.get("philosopher_1", "Philosopher 1")
+        _p2_name = st.session_state.get("philosopher_2", "Philosopher 2")
+
+        # Helper to get per-philosopher default max_tokens from voice profile
+        def _get_default_tokens(name: str) -> int:
+            pid = name.lower().replace(" ", "")
+            pcfg = get_philosopher(pid)
+            if pcfg and pcfg.voice_profile:
+                return pcfg.voice_profile.get("default_max_tokens", 400)
+            return 400
+
+        from core.config import _tokens_to_sentence_range
+
+        # Check for pending resets before rendering sliders (Streamlit
+        # does not allow session state changes after widget instantiation).
+        for slider_key, phil_name in [
+            ("max_tokens_p1", _p1_name),
+            ("max_tokens_p2", _p2_name),
+        ]:
+            reset_flag = f"_pending_reset_{slider_key}"
+            if st.session_state.pop(reset_flag, False):
+                st.session_state[slider_key] = _get_default_tokens(phil_name)
+
+        with st.expander("Verbosity (experimental)", expanded=False):
+            st.caption("Hint only — use Shorter/Longer buttons after a conversation for reliable control.")
+            for label, slider_key, phil_name in [
+                (f"Verbosity — {_p1_name}", "max_tokens_p1", _p1_name),
+                (f"Verbosity — {_p2_name}", "max_tokens_p2", _p2_name),
+            ]:
+                default_tokens = _get_default_tokens(phil_name)
+                col_slider, col_reset = st.columns([5, 1])
+                with col_slider:
+                    current_val = st.session_state.get(slider_key, default_tokens)
+                    sentence_hint = _tokens_to_sentence_range(current_val)
+                    st.slider(
+                        f"{label} ({sentence_hint} sentences):",
+                        min_value=100,
+                        max_value=800,
+                        step=50,
+                        key=slider_key,
+                        disabled=True,
+                    )
+                with col_reset:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    if st.button("↺", key=f"reset_{slider_key}",
+                                 help=f"Reset to {phil_name}'s default ({default_tokens})",
+                                 disabled=True):
+                        st.session_state[f"_pending_reset_{slider_key}"] = True
+                        st.rerun()
+
+        # --- Character Notes Section ---
+        st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
+        st.caption("Add optional style instructions for each philosopher. "
+                   "These take effect the next time you start a conversation.")
+
+        st.text_area(
+            f"Notes for {_p1_name}:",
+            key="personality_notes_p1",
+            height=80,
+            placeholder="e.g. 'Be more gossipy, use more parenthetical asides'",
+            help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
+        )
+        st.text_area(
+            f"Notes for {_p2_name}:",
+            key="personality_notes_p2",
+            height=80,
+            placeholder="e.g. 'Be more restrained, let emotion show through brevity'",
+            help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
         )
 
         # --- Display Section ---
@@ -797,6 +856,39 @@ def display_settings_popover(model_info: Dict[str, str]):
         for name, model in model_info.items():
             st.caption(f"**{name}:** {model}")
 
+        # --- Per-Philosopher Config Viewer ---
+        _p1_key = _p1_name.lower().replace(" ", "")
+        _p2_key = _p2_name.lower().replace(" ", "")
+        for label, pkey, notes_key, tokens_key in [
+            (_p1_name, _p1_key, "personality_notes_p1", "max_tokens_p1"),
+            (_p2_name, _p2_key, "personality_notes_p2", "max_tokens_p2"),
+        ]:
+            with st.expander(f"Config: {label}"):
+                params = load_llm_params(pkey)
+                current_tokens = st.session_state.get(tokens_key, 400)
+                effective_sentences = _tokens_to_sentence_range(current_tokens)
+                if params:
+                    st.caption(
+                        f"**Temperature:** {params.get('temperature', '—')}  \n"
+                        f"**Max Tokens:** {current_tokens} (→ {effective_sentences} sentences)  \n"
+                        f"**Top P:** {params.get('top_p', '—')}  \n"
+                        f"**Presence Penalty:** {params.get('presence_penalty', 0.0)}  \n"
+                        f"**Frequency Penalty:** {params.get('frequency_penalty', 0.0)}"
+                    )
+                pcfg_viewer = get_philosopher(pkey)
+                if pcfg_viewer and pcfg_viewer.voice_profile:
+                    vp = pcfg_viewer.voice_profile
+                    parts = []
+                    if vp.get("style_keywords"):
+                        parts.append(f"**Style:** {', '.join(vp['style_keywords'])}")
+                    if parts:
+                        st.caption("  \n".join(parts))
+                    if vp.get("personality_summary"):
+                        st.caption(f"**Personality:** {vp['personality_summary']}")
+                notes = st.session_state.get(notes_key, "")
+                if notes and notes.strip():
+                    st.caption(f"**Active Notes:** {notes.strip()}")
+
 
 def display_conversation(
     messages: List[Dict[str, Any]],
@@ -806,6 +898,7 @@ def display_conversation(
     next_speaker_for_guidance: str = "",
     num_rounds: int = 0,
     mode: str = "",
+    is_translated_view: bool = False,
 ):
     """Render the full conversation using custom HTML."""
     if show_moderator_ctx is None:
@@ -819,7 +912,7 @@ def display_conversation(
     philosopher_turn_count = 0
     current_round = 0
 
-    for msg in messages:
+    for msg_idx, msg in enumerate(messages):
         role = msg.get("role", "system")
         content = msg.get("content", "")
         role_lower = role.lower().strip()
@@ -842,6 +935,66 @@ def display_conversation(
 
             intent = msg.get("intent", "")
             html_parts.append(_render_message(role, content, round_num, intent=intent))
+
+            # Flush HTML buffer before rendering Streamlit buttons.
+            # Close the container div so each fragment is self-contained.
+            if html_parts:
+                html_parts.append('</div>')
+                st.markdown("".join(html_parts), unsafe_allow_html=True)
+                html_parts = ['<div class="phd-container">']
+
+            # Scroll anchor for editor — emitted for every philosopher message
+            _anchor_id = f"editor-msg-{msg_idx}"
+            st.markdown(f'<div id="{_anchor_id}"></div>', unsafe_allow_html=True)
+
+            # Auto-scroll to this message if it was just edited
+            _scroll_target = st.session_state.pop("_scroll_to_msg", None)
+            if _scroll_target == msg_idx:
+                st.markdown(
+                    f'<script>document.getElementById("{_anchor_id}")'
+                    f'.scrollIntoView({{behavior: "smooth", block: "center"}});</script>',
+                    unsafe_allow_html=True,
+                )
+
+            # Editor controls (only after conversation is complete, not on translated view)
+            if conversation_completed and not is_translated_view:
+                _slider_key = f"_editor_pct_{msg_idx}"
+                # Initialize slider to 100% if not set
+                if _slider_key not in st.session_state:
+                    st.session_state[_slider_key] = 100
+
+                _col_slider, _col_apply, _col_reset = st.columns([6, 1, 1])
+                with _col_slider:
+                    st.slider(
+                        "Length",
+                        min_value=25,
+                        max_value=200,
+                        step=25,
+                        key=_slider_key,
+                        format="%d%%",
+                        label_visibility="collapsed",
+                    )
+                with _col_apply:
+                    _pct = st.session_state.get(_slider_key, 100)
+                    if st.button(
+                        "Apply" if _pct != 100 else "Apply",
+                        key=f"edit_apply_{msg_idx}",
+                        disabled=(_pct == 100),
+                    ):
+                        st.session_state["_editor_request"] = {
+                            "index": msg_idx, "pct": _pct
+                        }
+                        st.rerun()
+                with _col_reset:
+                    _has_edit = msg.get("_original_content") is not None
+                    if st.button(
+                        "Reset",
+                        key=f"edit_reset_{msg_idx}",
+                        disabled=not _has_edit,
+                    ):
+                        st.session_state["_editor_reset"] = msg_idx
+                        st.rerun()
+
             continue
 
         # --- System messages ---

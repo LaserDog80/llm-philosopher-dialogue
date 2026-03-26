@@ -16,6 +16,7 @@ def create_chain(
     mode: str = "philosophy",
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
+    personality_notes: Optional[str] = None,
 ) -> Optional[Any]:
     """
     Create a LangChain chain for any persona/mode combination.
@@ -28,6 +29,7 @@ def create_chain(
         mode: Conversation mode (e.g. "philosophy", "bio").
         prompt_overrides: Optional dict of override prompts keyed by "persona_mode".
         max_tokens_override: Optional runtime override for max_tokens.
+        personality_notes: Optional free-form user personality directives.
 
     Returns:
         A LangChain chain, or None on failure.
@@ -36,6 +38,7 @@ def create_chain(
     llm, system_prompt = load_llm_config_for_persona(
         persona_id, mode=mode, prompt_overrides=prompt_overrides,
         max_tokens_override=max_tokens_override,
+        personality_notes=personality_notes,
     )
 
     if not llm or not system_prompt:

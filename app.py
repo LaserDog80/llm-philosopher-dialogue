@@ -75,12 +75,15 @@ _DEFAULTS: Dict[str, Any] = {
     "log_content": None,
     "current_log_filename": None,
     "show_monologue_cb": False,
-    "philosopher_1": "Socrates",
-    "philosopher_2": "Confucius",
+    "philosopher_1": "Herodotus",
+    "philosopher_2": "Sima Qian",
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "conversation_style": DEFAULT_CONVERSATION_STYLE,
-    "max_tokens": 400,
+    "max_tokens_p1": 600,   # Herodotus default from voice_profile
+    "max_tokens_p2": 350,   # Sima Qian default from voice_profile
+    "personality_notes_p1": "",
+    "personality_notes_p2": "",
     "run_conversation_flag": False,
     "conversation_completed": False,
     "prompt_overrides": {},
@@ -176,14 +179,20 @@ def _run_initial_conversation(prompt: str) -> None:
             unsafe_allow_html=True,
         )
 
-        max_tokens = st.session_state.get("max_tokens", 0)
+        max_tokens_p1 = st.session_state.get("max_tokens_p1", 0)
+        max_tokens_p2 = st.session_state.get("max_tokens_p2", 0)
+        personality_notes_p1 = st.session_state.get("personality_notes_p1", "")
+        personality_notes_p2 = st.session_state.get("personality_notes_p2", "")
         gen_msgs, final_status, success, thread_id = run_agentic_conversation(
             topic=prompt,
             philosopher_1=starter,
             philosopher_2=philosopher_2,
             num_rounds=num_rounds,
             mode=mode,
-            max_tokens=max_tokens,
+            max_tokens_p1=max_tokens_p1,
+            max_tokens_p2=max_tokens_p2,
+            personality_notes_p1=personality_notes_p1,
+            personality_notes_p2=personality_notes_p2,
         )
         logger.info(f"Agentic conversation finished. success={success}, status={final_status}")
         thinking_placeholder.empty()
@@ -294,6 +303,80 @@ if (
 ):
     _display_messages = st.session_state.translated_messages
 
+# ---------------------------------------------------------------------------
+# Handle editor rewrite requests
+# ---------------------------------------------------------------------------
+# Handle editor reset requests (restore original text)
+_editor_reset_idx = st.session_state.pop("_editor_reset", None)
+if _editor_reset_idx is not None and st.session_state.get("conversation_completed"):
+    messages = st.session_state.messages
+    if 0 <= _editor_reset_idx < len(messages):
+        msg = messages[_editor_reset_idx]
+        if "_original_content" in msg:
+            msg["content"] = msg.pop("_original_content")
+            msg.pop("_target_words", None)
+            # Reset the slider to 100%
+            slider_key = f"_editor_pct_{_editor_reset_idx}"
+            if slider_key in st.session_state:
+                del st.session_state[slider_key]
+            logger.info(f"Editor reset message {_editor_reset_idx} to original")
+            st.session_state["_scroll_to_msg"] = _editor_reset_idx
+
+# Handle editor rewrite requests (percentage-based)
+_editor_req = st.session_state.pop("_editor_request", None)
+if _editor_req and st.session_state.get("conversation_completed"):
+    msg_idx = _editor_req["index"]
+    pct = _editor_req["pct"]
+    messages = st.session_state.messages
+
+    if 0 <= msg_idx < len(messages):
+        msg = messages[msg_idx]
+
+        # Store original on first edit — this is the permanent source of truth
+        if "_original_content" not in msg:
+            msg["_original_content"] = msg["content"]
+        original = msg["_original_content"]
+
+        # Compute target word count from percentage of original
+        original_words = len(original.split())
+        target_words = max(15, int(original_words * pct / 100))
+
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator(
+                f"Editor rewriting to ~{target_words} words ({pct}%)..."
+            ),
+            unsafe_allow_html=True,
+        )
+        try:
+            from core.editor import rewrite_message
+            rewritten = rewrite_message(messages, msg_idx, target_words, original)
+            if rewritten:
+                msg["content"] = rewritten
+                msg["_target_words"] = target_words
+                logger.info(f"Editor rewrote message {msg_idx} to ~{target_words} words ({pct}%)")
+                st.session_state["_scroll_to_msg"] = msg_idx
+            else:
+                st.warning("Editor could not rewrite the message.")
+        except Exception as e:
+            logger.error(f"Editor error: {e}", exc_info=True)
+            st.error(f"Editor error: {e}")
+        finally:
+            thinking_placeholder.empty()
+
+    # Re-derive display messages after edit
+    _display_messages = st.session_state.messages
+    if (
+        st.session_state.get("output_style") == "Translated Text"
+        and st.session_state.get("translated_messages")
+    ):
+        _display_messages = st.session_state.translated_messages
+
+_is_translated = (
+    st.session_state.get("output_style") == "Translated Text"
+    and st.session_state.get("translated_messages") is not None
+)
+
 gui.display_conversation(
     messages=_display_messages,
     conversation_completed=st.session_state.get("conversation_completed", False),
@@ -301,6 +384,7 @@ gui.display_conversation(
     next_speaker_for_guidance="",
     num_rounds=st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS),
     mode=st.session_state.get("conversation_mode", DEFAULT_CONVERSATION_MODE),
+    is_translated_view=_is_translated,
 )
 
 # Internal monologue expander

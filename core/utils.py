@@ -18,6 +18,12 @@ DIRECTION_TAG_REGEX = re.compile(
     re.IGNORECASE,
 )
 
+# Fallback: catches truncated/malformed direction tags like "[NEXT: Sappho" or "[NEXT: Sappho]"
+DIRECTION_TAG_FALLBACK_REGEX = re.compile(
+    r"\[NEXT:\s*[^\]]*\]?",
+    re.IGNORECASE,
+)
+
 
 def extract_think_block(text: Optional[str]) -> Optional[str]:
     """Extract content from the first <think> block found."""
@@ -88,14 +94,21 @@ def parse_direction_tag(text: str) -> Tuple[str, Dict[str, str]]:
 
     Returns (cleaned_text, {"next": "<name>", "intent": "<intent>"}).
     If no tag is found, returns (original_text, {}).
+    Also strips truncated/malformed direction tags that the primary regex misses.
     """
     match = DIRECTION_TAG_REGEX.search(text)
-    if not match:
-        return text.strip(), {}
+    if match:
+        tag_info = {
+            "next": match.group("next").strip(),
+            "intent": match.group("intent").strip().lower(),
+        }
+        cleaned = text[:match.start()] + text[match.end():]
+        return cleaned.strip(), tag_info
 
-    tag_info = {
-        "next": match.group("next").strip(),
-        "intent": match.group("intent").strip().lower(),
-    }
-    cleaned = text[:match.start()] + text[match.end():]
-    return cleaned.strip(), tag_info
+    # Fallback: strip malformed/truncated direction tags (e.g. "[NEXT: Sappho")
+    fallback = DIRECTION_TAG_FALLBACK_REGEX.search(text)
+    if fallback:
+        cleaned = text[:fallback.start()] + text[fallback.end():]
+        return cleaned.strip(), {}
+
+    return text.strip(), {}

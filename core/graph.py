@@ -47,7 +47,10 @@ class DialogueState(TypedDict, total=False):
     mode: str                # philosophy or bio
     topic: str               # Original user question
     turn_count: int          # Total turns taken so far
-    max_tokens: int          # Runtime max_tokens override (from verbosity slider)
+    max_tokens_p1: int       # Per-philosopher max_tokens override
+    max_tokens_p2: int       # Per-philosopher max_tokens override
+    personality_notes_p1: str  # User character notes for philosopher 1
+    personality_notes_p2: str  # User character notes for philosopher 2
     is_complete: bool
     error: str
 
@@ -67,9 +70,17 @@ def philosopher_node(state: DialogueState) -> Dict:
     pcfg = get_philosopher(next_id)
     speaker_name = pcfg.display_name if pcfg else next_id
 
-    # Load chain (with optional max_tokens override from verbosity slider)
-    max_tokens = state.get("max_tokens", 0) or None
-    chain = create_chain(next_id, mode=mode, max_tokens_override=max_tokens)
+    # Load chain with per-philosopher max_tokens and personality notes
+    if next_id == state["philosopher_1_id"]:
+        max_tokens = state.get("max_tokens_p1", 0) or None
+        personality_notes = state.get("personality_notes_p1", "")
+    else:
+        max_tokens = state.get("max_tokens_p2", 0) or None
+        personality_notes = state.get("personality_notes_p2", "")
+    chain = create_chain(
+        next_id, mode=mode, max_tokens_override=max_tokens,
+        personality_notes=personality_notes or None,
+    )
     if chain is None:
         return {"error": f"Failed to load chain for {speaker_name}", "is_complete": True}
 
@@ -78,11 +89,17 @@ def philosopher_node(state: DialogueState) -> Dict:
 
     # Build input content — always include the original topic for context
     topic = state["topic"]
+    total_rounds = state.get("total_rounds", 3)
     if turn_count == 0:
         input_content = topic
     else:
         last_response = state.get("last_response", "")
-        input_content = f"Original topic: {topic}\n\n{last_response}"
+        input_content = (
+            f"Original topic: {topic}\n"
+            f"[Round {current_round} of {total_rounds}. "
+            f"Build on what has been said — do not repeat earlier points.]\n\n"
+            f"{last_response}"
+        )
 
     # Inject long-term memory context with usage instructions
     long_term_ctx = ""
@@ -286,7 +303,10 @@ def run_agentic_conversation(
     db_path: str = DEFAULT_DB_PATH,
     thread_id: Optional[str] = None,
     on_status: Optional[Callable] = None,
-    max_tokens: int = 0,
+    max_tokens_p1: int = 0,
+    max_tokens_p2: int = 0,
+    personality_notes_p1: str = "",
+    personality_notes_p2: str = "",
 ) -> Tuple[List[Dict[str, Any]], str, bool, str]:
     """Run a self-organizing philosopher conversation.
 
@@ -299,6 +319,10 @@ def run_agentic_conversation(
         db_path: Path to SQLite checkpoint DB.
         thread_id: Optional thread ID to resume a conversation.
         on_status: Optional callback for status updates.
+        max_tokens_p1: Max tokens override for philosopher 1.
+        max_tokens_p2: Max tokens override for philosopher 2.
+        personality_notes_p1: User character notes for philosopher 1.
+        personality_notes_p2: User character notes for philosopher 2.
 
     Returns:
         (messages, final_status, success, thread_id)
@@ -345,7 +369,10 @@ def run_agentic_conversation(
         "mode": mode.lower(),
         "topic": topic,
         "turn_count": 0,
-        "max_tokens": max_tokens,
+        "max_tokens_p1": max_tokens_p1,
+        "max_tokens_p2": max_tokens_p2,
+        "personality_notes_p1": personality_notes_p1,
+        "personality_notes_p2": personality_notes_p2,
         "is_complete": False,
         "error": "",
     }
