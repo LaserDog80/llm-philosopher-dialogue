@@ -80,8 +80,8 @@ _DEFAULTS: Dict[str, Any] = {
     "num_rounds": DEFAULT_NUM_ROUNDS,
     "conversation_mode": DEFAULT_CONVERSATION_MODE,
     "conversation_style": DEFAULT_CONVERSATION_STYLE,
-    "max_tokens_p1": 400,
-    "max_tokens_p2": 400,
+    "max_tokens_p1": 350,   # Socrates default from voice_profile
+    "max_tokens_p2": 300,   # Confucius default from voice_profile
     "personality_notes_p1": "",
     "personality_notes_p2": "",
     "run_conversation_flag": False,
@@ -303,6 +303,48 @@ if (
 ):
     _display_messages = st.session_state.translated_messages
 
+# ---------------------------------------------------------------------------
+# Handle editor rewrite requests
+# ---------------------------------------------------------------------------
+_editor_req = st.session_state.pop("_editor_request", None)
+if _editor_req and st.session_state.get("conversation_completed"):
+    msg_idx = _editor_req["index"]
+    direction = _editor_req["direction"]
+    messages = st.session_state.messages
+
+    if 0 <= msg_idx < len(messages):
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator(f"Editor rewriting ({direction})..."),
+            unsafe_allow_html=True,
+        )
+        try:
+            from core.editor import rewrite_message
+            rewritten = rewrite_message(messages, msg_idx, direction)
+            if rewritten:
+                st.session_state.messages[msg_idx]["content"] = rewritten
+                logger.info(f"Editor rewrote message {msg_idx} ({direction})")
+            else:
+                st.warning("Editor could not rewrite the message.")
+        except Exception as e:
+            logger.error(f"Editor error: {e}", exc_info=True)
+            st.error(f"Editor error: {e}")
+        finally:
+            thinking_placeholder.empty()
+
+    # Re-derive display messages after edit
+    _display_messages = st.session_state.messages
+    if (
+        st.session_state.get("output_style") == "Translated Text"
+        and st.session_state.get("translated_messages")
+    ):
+        _display_messages = st.session_state.translated_messages
+
+_is_translated = (
+    st.session_state.get("output_style") == "Translated Text"
+    and st.session_state.get("translated_messages") is not None
+)
+
 gui.display_conversation(
     messages=_display_messages,
     conversation_completed=st.session_state.get("conversation_completed", False),
@@ -310,6 +352,7 @@ gui.display_conversation(
     next_speaker_for_guidance="",
     num_rounds=st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS),
     mode=st.session_state.get("conversation_mode", DEFAULT_CONVERSATION_MODE),
+    is_translated_view=_is_translated,
 )
 
 # Internal monologue expander
