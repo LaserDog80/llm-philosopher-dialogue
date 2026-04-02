@@ -47,4 +47,5 @@ class TestCreateChain:
         mock_load.assert_called_once_with(
             "socrates", mode="philosophy", prompt_overrides=overrides,
             max_tokens_override=None, personality_notes=None,
+            style_reference_enabled=True,
         )

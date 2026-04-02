@@ -51,6 +51,7 @@ class DialogueState(TypedDict, total=False):
     max_tokens_p2: int       # Per-philosopher max_tokens override
     personality_notes_p1: str  # User character notes for philosopher 1
     personality_notes_p2: str  # User character notes for philosopher 2
+    style_reference_enabled: bool  # Whether to include source text style references
     is_complete: bool
     error: str
 
@@ -77,9 +78,11 @@ def philosopher_node(state: DialogueState) -> Dict:
     else:
         max_tokens = state.get("max_tokens_p2", 0) or None
         personality_notes = state.get("personality_notes_p2", "")
+    style_reference_enabled = state.get("style_reference_enabled", True)
     chain = create_chain(
         next_id, mode=mode, max_tokens_override=max_tokens,
         personality_notes=personality_notes or None,
+        style_reference_enabled=style_reference_enabled,
     )
     if chain is None:
         return {"error": f"Failed to load chain for {speaker_name}", "is_complete": True}
@@ -307,6 +310,7 @@ def run_agentic_conversation(
     max_tokens_p2: int = 0,
     personality_notes_p1: str = "",
     personality_notes_p2: str = "",
+    style_reference_enabled: bool = True,
 ) -> Tuple[List[Dict[str, Any]], str, bool, str]:
     """Run a self-organizing philosopher conversation.
 
@@ -323,6 +327,7 @@ def run_agentic_conversation(
         max_tokens_p2: Max tokens override for philosopher 2.
         personality_notes_p1: User character notes for philosopher 1.
         personality_notes_p2: User character notes for philosopher 2.
+        style_reference_enabled: Whether to include source text style references.
 
     Returns:
         (messages, final_status, success, thread_id)
@@ -373,6 +378,7 @@ def run_agentic_conversation(
         "max_tokens_p2": max_tokens_p2,
         "personality_notes_p1": personality_notes_p1,
         "personality_notes_p2": personality_notes_p2,
+        "style_reference_enabled": style_reference_enabled,
         "is_complete": False,
         "error": "",
     }

@@ -9,6 +9,7 @@ from core.config import (
     load_default_prompt_text,
     load_llm_params,
     load_llm_config_for_persona,
+    load_style_reference,
 )
 
 
@@ -17,9 +18,11 @@ def clear_lru_caches():
     """Clear lru_cache between tests to avoid cross-test pollution."""
     load_default_prompt_text.cache_clear()
     load_llm_params.cache_clear()
+    load_style_reference.cache_clear()
     yield
     load_default_prompt_text.cache_clear()
     load_llm_params.cache_clear()
+    load_style_reference.cache_clear()
 
 
 class TestLoadDefaultPromptText:
@@ -94,3 +97,69 @@ class TestLoadLlmConfigForPersona:
 
         assert llm is None
         assert prompt is None
+
+
+class TestLoadStyleReference:
+    def test_loads_existing_style_reference(self, tmp_path):
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir()
+        ref_file = prompt_dir / "herodotus_style_reference.txt"
+        ref_file.write_text("--- STYLE REFERENCE ---\nSample passage.")
+
+        with patch("os.getcwd", return_value=str(tmp_path)):
+            result = load_style_reference("herodotus")
+        assert result == "--- STYLE REFERENCE ---\nSample passage."
+
+    def test_missing_file_returns_none(self, tmp_path):
+        with patch("os.getcwd", return_value=str(tmp_path)):
+            result = load_style_reference("nonexistent_persona")
+        assert result is None
+
+    def test_style_reference_appended_when_enabled(self, tmp_path):
+        """When style_reference_enabled=True and file exists, prompt includes it."""
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir()
+        (prompt_dir / "testphil_philosophy.txt").write_text("You are a philosopher.")
+        (prompt_dir / "testphil_style_reference.txt").write_text("Use these patterns.")
+
+        config = {"defaults": {"temperature": 0.7, "max_tokens": 400}}
+        (tmp_path / "llm_config.json").write_text(json.dumps(config))
+
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch.dict(os.environ, {
+                 "NEBIUS_API_KEY": "test-key",
+                 "NEBIUS_API_BASE": "http://test",
+             }, clear=False):
+            llm, prompt = load_llm_config_for_persona(
+                "testphil", mode="philosophy",
+                config_path="llm_config.json",
+                style_reference_enabled=True,
+            )
+
+        assert prompt is not None
+        assert "--- STYLE REFERENCE ---" in prompt
+        assert "Use these patterns." in prompt
+
+    def test_style_reference_excluded_when_disabled(self, tmp_path):
+        """When style_reference_enabled=False, prompt does NOT include it."""
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir()
+        (prompt_dir / "testphil_philosophy.txt").write_text("You are a philosopher.")
+        (prompt_dir / "testphil_style_reference.txt").write_text("Use these patterns.")
+
+        config = {"defaults": {"temperature": 0.7, "max_tokens": 400}}
+        (tmp_path / "llm_config.json").write_text(json.dumps(config))
+
+        with patch("os.getcwd", return_value=str(tmp_path)), \
+             patch.dict(os.environ, {
+                 "NEBIUS_API_KEY": "test-key",
+                 "NEBIUS_API_BASE": "http://test",
+             }, clear=False):
+            llm, prompt = load_llm_config_for_persona(
+                "testphil", mode="philosophy",
+                config_path="llm_config.json",
+                style_reference_enabled=False,
+            )
+
+        assert prompt is not None
+        assert "--- STYLE REFERENCE ---" not in prompt

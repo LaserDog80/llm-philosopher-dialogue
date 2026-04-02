@@ -6,7 +6,7 @@ A plain-language guide to installing and running the app -- no programming backg
 
 ## What Is This App?
 
-LLM-Philosophers is a web application that stages conversations between two AI-powered versions of famous philosophers -- Socrates and Confucius. You pick a topic, and the two philosophers discuss it in real time while an AI moderator keeps the conversation on track. You can also step in and guide the conversation yourself.
+LLM-Philosophers is a web application that stages conversations between two AI-powered versions of famous historical thinkers -- including Herodotus, Sima Qian, Socrates, Confucius, Aristotle, and Nietzsche. You pick a topic, and two philosophers discuss it in real time. You can also step in and guide the conversation yourself.
 
 ---
 
@@ -150,7 +150,20 @@ When all rounds are complete:
 The app has two additional pages accessible from the sidebar navigation:
 
 - **Direct Chat** -- A testing page where you can talk one-on-one with a single philosopher. Useful for exploring how each persona responds.
-- **Settings** -- Lets you customize the system prompts that define each philosopher's personality and instructions. Changes apply for the current session only.
+- **Settings** -- Lets you customize the system prompts that define each philosopher's personality and instructions. Changes apply for the current session only. The Settings page also includes a **Source Text Style Guide** toggle (see below).
+
+### Source Text Style Guide
+
+The app can use passages from each philosopher's actual historical writings to produce a more authentic speaking style. When enabled (the default), philosophers whose works are available will have excerpts and rhetorical patterns from those works included in their system prompt.
+
+Currently supported:
+
+| Philosopher | Source Text |
+|---|---|
+| Herodotus | *The Histories* (Rawlinson translation, public domain) |
+| Sima Qian | *Records of the Grand Historian* (Shiji) and *Letter to Ren An* |
+
+You can toggle this feature on or off from the **Settings** page using the **Source Text Style Guide** switch. When disabled, the philosophers still speak in character using their default voice profiles, but without the additional grounding from their original writings.
 
 ---
 

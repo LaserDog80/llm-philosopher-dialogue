@@ -39,7 +39,7 @@ if parent_dir not in sys.path:
 try:
     from llm_loader import load_default_prompt_text
     from core.registry import get_display_names, get_philosopher
-    from core.config import load_llm_params
+    from core.config import load_llm_params, load_style_reference
     import gui
 except ImportError as e:
     st.error(f"Import error: {e}")
@@ -81,6 +81,27 @@ FALLBACK_TEXT = "Default prompt file not found."
 st.session_state.setdefault("prompt_overrides", {})
 st.session_state.setdefault("editor_content_state", {})
 st.session_state.setdefault("last_processed_key_settings", None)
+st.session_state.setdefault("style_reference_enabled", True)
+
+# ---------------------------------------------------------------------------
+# Source Text Style Guide toggle
+# ---------------------------------------------------------------------------
+st.toggle(
+    "Source Text Style Guide",
+    value=st.session_state.get("style_reference_enabled", True),
+    key="style_reference_toggle",
+    help=(
+        "When enabled, philosophers whose historical writings are available "
+        "(e.g. Herodotus — *The Histories*, Sima Qian — *Records of the Grand "
+        "Historian*) will have passages from those works included in their "
+        "system prompt to produce a more authentic speaking style."
+    ),
+    on_change=lambda: st.session_state.update(
+        style_reference_enabled=st.session_state.style_reference_toggle
+    ),
+)
+
+st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Selectors
@@ -199,6 +220,18 @@ with st.expander(f"View Effective Configuration — {selected_persona}"):
             st.caption("**Example Utterances:**")
             for ex in vp["example_utterances"]:
                 st.caption(f'  — "{ex}"')
+
+    # Style reference status
+    style_ref = load_style_reference(persona_key)
+    if style_ref:
+        style_enabled = st.session_state.get("style_reference_enabled", True)
+        status = "Active" if style_enabled else "Available (disabled)"
+        st.markdown(f"**Source Text Style Guide:** {status}")
+        if style_enabled:
+            with st.expander("View Style Reference"):
+                st.text(style_ref)
+    else:
+        st.caption("**Source Text Style Guide:** Not available for this persona.")
 
     # Active user personality notes
     notes_key = None

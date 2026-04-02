@@ -50,6 +50,28 @@ def load_default_prompt_text(persona_name: str, mode: str) -> Optional[str]:
     return None
 
 
+@lru_cache(maxsize=32)
+def load_style_reference(persona_name: str) -> Optional[str]:
+    """Load optional style reference file for a persona.
+
+    Returns the file contents if prompts/{persona_name}_style_reference.txt
+    exists, otherwise None.  This is opt-in per philosopher.
+    """
+    filename = f"{persona_name}_style_reference.txt"
+    for base in [os.getcwd(), os.path.dirname(os.path.dirname(__file__)) or '.']:
+        path = os.path.join(base, DEFAULT_PROMPT_DIR, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+                logger.info(f"Loaded style reference for '{persona_name}' from {path}")
+                return text
+            except Exception as e:
+                logger.error(f"Error reading style reference {path}: {e}")
+                return None
+    return None
+
+
 @lru_cache(maxsize=16)
 def load_llm_params(persona_name: str, config_path: str = "llm_config.json") -> Dict:
     """Load and merge LLM parameters from JSON config."""
@@ -98,6 +120,7 @@ def load_llm_config_for_persona(
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
     personality_notes: Optional[str] = None,
+    style_reference_enabled: bool = True,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
@@ -162,6 +185,12 @@ def load_llm_config_for_persona(
             for ex in vp["example_utterances"]:
                 directives += f'- "{ex}"\n'
         effective_prompt += directives
+
+    # Append style reference from source texts (e.g. The Histories, Shiji)
+    if style_reference_enabled:
+        style_ref = load_style_reference(persona_name)
+        if style_ref:
+            effective_prompt += f"\n\n--- STYLE REFERENCE ---\n{style_ref}\n"
 
     # Build LLM kwargs
     model_name = params.get("model_name", DEFAULT_MODEL)

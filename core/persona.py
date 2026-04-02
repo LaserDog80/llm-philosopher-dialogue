@@ -17,6 +17,7 @@ def create_chain(
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
     personality_notes: Optional[str] = None,
+    style_reference_enabled: bool = True,
 ) -> Optional[Any]:
     """
     Create a LangChain chain for any persona/mode combination.
@@ -30,6 +31,7 @@ def create_chain(
         prompt_overrides: Optional dict of override prompts keyed by "persona_mode".
         max_tokens_override: Optional runtime override for max_tokens.
         personality_notes: Optional free-form user personality directives.
+        style_reference_enabled: Whether to include source text style references.
 
     Returns:
         A LangChain chain, or None on failure.
@@ -39,6 +41,7 @@ def create_chain(
         persona_id, mode=mode, prompt_overrides=prompt_overrides,
         max_tokens_override=max_tokens_override,
         personality_notes=personality_notes,
+        style_reference_enabled=style_reference_enabled,
     )
 
     if not llm or not system_prompt:

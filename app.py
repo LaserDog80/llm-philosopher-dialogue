@@ -84,6 +84,7 @@ _DEFAULTS: Dict[str, Any] = {
     "max_tokens_p2": 350,   # Sima Qian default from voice_profile
     "personality_notes_p1": "",
     "personality_notes_p2": "",
+    "style_reference_enabled": True,
     "run_conversation_flag": False,
     "conversation_completed": False,
     "prompt_overrides": {},
@@ -183,6 +184,7 @@ def _run_initial_conversation(prompt: str) -> None:
         max_tokens_p2 = st.session_state.get("max_tokens_p2", 0)
         personality_notes_p1 = st.session_state.get("personality_notes_p1", "")
         personality_notes_p2 = st.session_state.get("personality_notes_p2", "")
+        style_reference_enabled = st.session_state.get("style_reference_enabled", True)
         gen_msgs, final_status, success, thread_id = run_agentic_conversation(
             topic=prompt,
             philosopher_1=starter,
@@ -193,6 +195,7 @@ def _run_initial_conversation(prompt: str) -> None:
             max_tokens_p2=max_tokens_p2,
             personality_notes_p1=personality_notes_p1,
             personality_notes_p2=personality_notes_p2,
+            style_reference_enabled=style_reference_enabled,
         )
         logger.info(f"Agentic conversation finished. success={success}, status={final_status}")
         thinking_placeholder.empty()
