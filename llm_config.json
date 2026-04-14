@@ -76,6 +76,13 @@
     "top_p": 0.9,
     "request_timeout": 180
   },
+  "librarian": {
+    "model_name": "meta-llama/Llama-3.3-70B-Instruct",
+    "temperature": 0.2,
+    "max_tokens": 200,
+    "top_p": 0.9,
+    "request_timeout": 45
+  },
   "editor": {
     "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
     "temperature": 0.6,
