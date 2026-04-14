@@ -168,7 +168,7 @@ def _run_story_turn(prompt: str) -> None:
     Bypasses the agentic graph — STORY mode is one prompt, one story, end.
     """
     from core.persona import create_chain
-    from core.utils import parse_direction_tag
+    from core.utils import extract_and_clean, parse_direction_tag
 
     starter = "Herodotus"
     pid = "herodotus"
@@ -190,11 +190,12 @@ def _run_story_turn(prompt: str) -> None:
             raise RuntimeError("Failed to load Herodotus story chain.")
 
         raw = chain.invoke({"input": prompt, "chat_history": []})
-        cleaned, _direction = parse_direction_tag(raw)
+        cleaned_raw, monologue = extract_and_clean(raw)
+        cleaned, _direction = parse_direction_tag(cleaned_raw)
 
         thinking_placeholder.empty()
 
-        story_msg: Dict[str, Any] = {"role": starter, "content": cleaned, "monologue": None}
+        story_msg: Dict[str, Any] = {"role": starter, "content": cleaned, "monologue": monologue}
         st.session_state.messages.append(story_msg)
         _write_log(story_msg)
 
