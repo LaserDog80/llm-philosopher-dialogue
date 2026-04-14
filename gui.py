@@ -617,9 +617,15 @@ def _render_empty_state() -> str:
 
 def _render_completion_banner(mode: str, num_rounds: int) -> str:
     """Render the conversation completion banner."""
+    if mode == "Story":
+        banner_text = "Story complete"
+    else:
+        banner_text = (
+            f"Dialogue complete &mdash; {num_rounds} round{'s' if num_rounds != 1 else ''} in {_esc(mode)} mode"
+        )
     return (
         '<div class="phd-complete">'
-        f'  <div class="phd-complete-text">Dialogue complete &mdash; {num_rounds} round{"s" if num_rounds != 1 else ""} in {_esc(mode)} mode</div>'
+        f'  <div class="phd-complete-text">{banner_text}</div>'
         '</div>'
     )
 
@@ -732,36 +738,59 @@ def display_settings_popover(model_info: Dict[str, str]):
         # --- Conversation Section ---
         st.markdown('<div class="ws-settings-section">Conversation</div>', unsafe_allow_html=True)
 
+        # Story mode is Herodotus-only. Read prior philosopher selections from
+        # session state to decide whether Story is offered this render.
+        _p1_prev = st.session_state.get("philosopher_1", "Herodotus")
+        _p2_prev = st.session_state.get("philosopher_2", "Sima Qian")
+        _herodotus_selected = "Herodotus" in (_p1_prev, _p2_prev)
+
+        _mode_options = ["Philosophy", "Story"] if _herodotus_selected else ["Philosophy"]
+        # Reset invalid carry-over (e.g. legacy "Bio", or "Story" without Herodotus)
+        if st.session_state.get("conversation_mode") not in _mode_options:
+            st.session_state["conversation_mode"] = "Philosophy"
+
         st.radio(
             "Mode:",
-            options=["Philosophy", "Bio"],
-            format_func=lambda x: "Philosophical" if x == "Philosophy" else "Biographical",
+            options=_mode_options,
+            format_func=lambda x: "Philosophical" if x == "Philosophy" else "Story",
             key="conversation_mode",
-            index=0,
             horizontal=True,
-            help="Select the conversation topic focus.",
+            help=(
+                "Story mode — Herodotus tells one story from the *Histories* that fits your "
+                "prompt, then the turn ends. Only available when Herodotus is one of the "
+                "selected philosophers."
+            ),
         )
 
+        _is_story = st.session_state.get("conversation_mode") == "Story"
         _philosopher_names = get_display_names()
-        st.selectbox(
-            "Philosopher 1 (speaks first):",
-            _philosopher_names,
-            key="philosopher_1",
-        )
-        st.selectbox(
-            "Philosopher 2:",
-            _philosopher_names,
-            key="philosopher_2",
-        )
 
-        st.number_input(
-            "Number of Rounds:",
-            min_value=1,
-            max_value=10,
-            step=1,
-            key="num_rounds",
-            help="One round = one response from each philosopher.",
-        )
+        if _is_story:
+            st.markdown("**Philosopher:** Herodotus")
+            st.caption(
+                "Story mode: Herodotus tells one story from the *Histories*, then the turn "
+                "ends. No second philosopher, no rounds."
+            )
+        else:
+            st.selectbox(
+                "Philosopher 1 (speaks first):",
+                _philosopher_names,
+                key="philosopher_1",
+            )
+            st.selectbox(
+                "Philosopher 2:",
+                _philosopher_names,
+                key="philosopher_2",
+            )
+
+            st.number_input(
+                "Number of Rounds:",
+                min_value=1,
+                max_value=10,
+                step=1,
+                key="num_rounds",
+                help="One round = one response from each philosopher.",
+            )
 
         _p1_name = st.session_state.get("philosopher_1", "Philosopher 1")
         _p2_name = st.session_state.get("philosopher_2", "Philosopher 2")
@@ -776,79 +805,86 @@ def display_settings_popover(model_info: Dict[str, str]):
 
         from core.config import _tokens_to_sentence_range
 
-        # Check for pending resets before rendering sliders (Streamlit
-        # does not allow session state changes after widget instantiation).
-        for slider_key, phil_name in [
-            ("max_tokens_p1", _p1_name),
-            ("max_tokens_p2", _p2_name),
-        ]:
-            reset_flag = f"_pending_reset_{slider_key}"
-            if st.session_state.pop(reset_flag, False):
-                st.session_state[slider_key] = _get_default_tokens(phil_name)
-
-        with st.expander("Verbosity (experimental)", expanded=False):
-            st.caption("Hint only — use Shorter/Longer buttons after a conversation for reliable control.")
-            for label, slider_key, phil_name in [
-                (f"Verbosity — {_p1_name}", "max_tokens_p1", _p1_name),
-                (f"Verbosity — {_p2_name}", "max_tokens_p2", _p2_name),
+        if not _is_story:
+            # Check for pending resets before rendering sliders (Streamlit
+            # does not allow session state changes after widget instantiation).
+            for slider_key, phil_name in [
+                ("max_tokens_p1", _p1_name),
+                ("max_tokens_p2", _p2_name),
             ]:
-                default_tokens = _get_default_tokens(phil_name)
-                col_slider, col_reset = st.columns([5, 1])
-                with col_slider:
-                    current_val = st.session_state.get(slider_key, default_tokens)
-                    sentence_hint = _tokens_to_sentence_range(current_val)
-                    st.slider(
-                        f"{label} ({sentence_hint} sentences):",
-                        min_value=100,
-                        max_value=800,
-                        step=50,
-                        key=slider_key,
-                        disabled=True,
-                    )
-                with col_reset:
-                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                    if st.button("↺", key=f"reset_{slider_key}",
-                                 help=f"Reset to {phil_name}'s default ({default_tokens})",
-                                 disabled=True):
-                        st.session_state[f"_pending_reset_{slider_key}"] = True
-                        st.rerun()
+                reset_flag = f"_pending_reset_{slider_key}"
+                if st.session_state.pop(reset_flag, False):
+                    st.session_state[slider_key] = _get_default_tokens(phil_name)
 
-        # --- Character Notes Section ---
-        st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
-        st.caption("Add optional style instructions for each philosopher. "
-                   "These take effect the next time you start a conversation.")
+            with st.expander("Verbosity (experimental)", expanded=False):
+                st.caption("Hint only — use Shorter/Longer buttons after a conversation for reliable control.")
+                for label, slider_key, phil_name in [
+                    (f"Verbosity — {_p1_name}", "max_tokens_p1", _p1_name),
+                    (f"Verbosity — {_p2_name}", "max_tokens_p2", _p2_name),
+                ]:
+                    default_tokens = _get_default_tokens(phil_name)
+                    col_slider, col_reset = st.columns([5, 1])
+                    with col_slider:
+                        current_val = st.session_state.get(slider_key, default_tokens)
+                        sentence_hint = _tokens_to_sentence_range(current_val)
+                        st.slider(
+                            f"{label} ({sentence_hint} sentences):",
+                            min_value=100,
+                            max_value=800,
+                            step=50,
+                            key=slider_key,
+                            disabled=True,
+                        )
+                    with col_reset:
+                        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                        if st.button("↺", key=f"reset_{slider_key}",
+                                     help=f"Reset to {phil_name}'s default ({default_tokens})",
+                                     disabled=True):
+                            st.session_state[f"_pending_reset_{slider_key}"] = True
+                            st.rerun()
 
-        st.text_area(
-            f"Notes for {_p1_name}:",
-            key="personality_notes_p1",
-            height=80,
-            placeholder="e.g. 'Be more gossipy, use more parenthetical asides'",
-            help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
-        )
-        st.text_area(
-            f"Notes for {_p2_name}:",
-            key="personality_notes_p2",
-            height=80,
-            placeholder="e.g. 'Be more restrained, let emotion show through brevity'",
-            help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
-        )
+            # --- Character Notes Section ---
+            st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
+            st.caption("Add optional style instructions for each philosopher. "
+                       "These take effect the next time you start a conversation.")
+
+            st.text_area(
+                f"Notes for {_p1_name}:",
+                key="personality_notes_p1",
+                height=80,
+                placeholder="e.g. 'Be more gossipy, use more parenthetical asides'",
+                help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
+            )
+            st.text_area(
+                f"Notes for {_p2_name}:",
+                key="personality_notes_p2",
+                height=80,
+                placeholder="e.g. 'Be more restrained, let emotion show through brevity'",
+                help="These notes are added to the philosopher's system prompt to adjust their speaking style.",
+            )
+        else:
+            # Story-mode character notes — single speaker (Herodotus), distinct session key.
+            st.markdown('<div class="ws-settings-section">Character Notes</div>', unsafe_allow_html=True)
+            st.text_area(
+                "Notes for Herodotus:",
+                key="personality_notes_story",
+                height=80,
+                placeholder="e.g. 'Lean into the gossipy, parenthetical register'",
+                help="Optional style instructions for Herodotus in Story mode.",
+            )
 
         # --- Display Section ---
         st.markdown('<div class="ws-settings-section">Display</div>', unsafe_allow_html=True)
-
-        st.radio(
-            "Output Style:",
-            ("Original Text", "Translated Text"),
-            key="output_style",
-            horizontal=True,
-            index=0,
-            help="View original dialogue or a casual translation.",
-        )
 
         st.checkbox(
             "Show Internal Monologue",
             key="show_monologue_cb",
             value=st.session_state.get("show_monologue_cb", False),
+        )
+        st.caption(
+            "Tip: after a conversation completes, click **Casual** under any message "
+            "to rewrite just that turn in casual English, or use **Translate All** "
+            "in the top bar to do every philosopher message at once."
         )
 
         # --- Model Info ---
@@ -857,12 +893,16 @@ def display_settings_popover(model_info: Dict[str, str]):
             st.caption(f"**{name}:** {model}")
 
         # --- Per-Philosopher Config Viewer ---
-        _p1_key = _p1_name.lower().replace(" ", "")
-        _p2_key = _p2_name.lower().replace(" ", "")
-        for label, pkey, notes_key, tokens_key in [
-            (_p1_name, _p1_key, "personality_notes_p1", "max_tokens_p1"),
-            (_p2_name, _p2_key, "personality_notes_p2", "max_tokens_p2"),
-        ]:
+        if _is_story:
+            _config_rows = [("Herodotus", "herodotus", "personality_notes_story", "max_tokens_p1")]
+        else:
+            _p1_key = _p1_name.lower().replace(" ", "")
+            _p2_key = _p2_name.lower().replace(" ", "")
+            _config_rows = [
+                (_p1_name, _p1_key, "personality_notes_p1", "max_tokens_p1"),
+                (_p2_name, _p2_key, "personality_notes_p2", "max_tokens_p2"),
+            ]
+        for label, pkey, notes_key, tokens_key in _config_rows:
             with st.expander(f"Config: {label}"):
                 params = load_llm_params(pkey)
                 current_tokens = st.session_state.get(tokens_key, 400)
@@ -956,28 +996,32 @@ def display_conversation(
                     unsafe_allow_html=True,
                 )
 
-            # Editor controls (only after conversation is complete, not on translated view)
-            if conversation_completed and not is_translated_view:
+            # Editor + Translate controls (only after conversation completes)
+            if conversation_completed:
                 _slider_key = f"_editor_pct_{msg_idx}"
                 # Initialize slider to 100% if not set
                 if _slider_key not in st.session_state:
                     st.session_state[_slider_key] = 100
 
-                _col_slider, _col_apply, _col_reset = st.columns([6, 1, 1])
+                _col_slider, _col_apply, _col_reset, _col_translate = st.columns([5, 1, 1, 1.3])
                 with _col_slider:
                     st.slider(
-                        "Length",
+                        "Rewrite length (% of original)",
                         min_value=25,
                         max_value=200,
                         step=25,
                         key=_slider_key,
                         format="%d%%",
-                        label_visibility="collapsed",
+                        help=(
+                            "Drag to choose a target length — 100% keeps the message as-is, "
+                            "50% asks the editor to cut it in half, 200% asks it to roughly double. "
+                            "Click Apply to rewrite."
+                        ),
                     )
                 with _col_apply:
                     _pct = st.session_state.get(_slider_key, 100)
                     if st.button(
-                        "Apply" if _pct != 100 else "Apply",
+                        "Apply",
                         key=f"edit_apply_{msg_idx}",
                         disabled=(_pct == 100),
                     ):
@@ -993,6 +1037,21 @@ def display_conversation(
                         disabled=not _has_edit,
                     ):
                         st.session_state["_editor_reset"] = msg_idx
+                        st.rerun()
+                with _col_translate:
+                    _is_translated = msg.get("_is_translated", False)
+                    _translate_label = "Original" if _is_translated else "Casual"
+                    _translate_help = (
+                        "Restore the original philosopher's English for this message."
+                        if _is_translated
+                        else "Rewrite this message in casual English. Click again to flip back."
+                    )
+                    if st.button(
+                        _translate_label,
+                        key=f"translate_{msg_idx}",
+                        help=_translate_help,
+                    ):
+                        st.session_state["_translate_request"] = {"index": msg_idx}
                         st.rerun()
 
             continue

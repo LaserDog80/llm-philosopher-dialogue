@@ -29,24 +29,38 @@ DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
 
 @lru_cache(maxsize=32)
 def load_default_prompt_text(persona_name: str, mode: str) -> Optional[str]:
-    """Load the default prompt text file for a persona/mode combination."""
+    """Load the default prompt text file for a persona/mode combination.
+
+    Falls back to the ``philosophy`` prompt if the requested mode-specific file
+    is missing — this lets new modes (e.g. ``story``) reuse existing prompts
+    for personas that don't yet have a dedicated file.
+    """
     mode_suffix = mode.lower()
-    prompt_filename = f"{persona_name}_{mode_suffix}.txt"
+    candidate_modes = [mode_suffix]
+    if mode_suffix != "philosophy":
+        candidate_modes.append("philosophy")
 
-    # Try CWD first, then script-relative
-    for base in [os.getcwd(), os.path.dirname(os.path.dirname(__file__)) or '.']:
-        prompt_path = os.path.join(base, DEFAULT_PROMPT_DIR, prompt_filename)
-        if os.path.exists(prompt_path):
-            try:
-                with open(prompt_path, "r", encoding="utf-8") as f:
-                    text = f.read().strip()
-                logger.info(f"Loaded prompt for '{persona_name}' mode '{mode}' from {prompt_path}")
-                return text
-            except Exception as e:
-                logger.error(f"Error reading prompt file {prompt_path}: {e}")
-                return None
+    for m in candidate_modes:
+        prompt_filename = f"{persona_name}_{m}.txt"
+        for base in [os.getcwd(), os.path.dirname(os.path.dirname(__file__)) or '.']:
+            prompt_path = os.path.join(base, DEFAULT_PROMPT_DIR, prompt_filename)
+            if os.path.exists(prompt_path):
+                try:
+                    with open(prompt_path, "r", encoding="utf-8") as f:
+                        text = f.read().strip()
+                    if m != mode_suffix:
+                        logger.info(
+                            f"Prompt for '{persona_name}' mode '{mode}' missing; "
+                            f"fell back to '{m}' ({prompt_path})."
+                        )
+                    else:
+                        logger.info(f"Loaded prompt for '{persona_name}' mode '{mode}' from {prompt_path}")
+                    return text
+                except Exception as e:
+                    logger.error(f"Error reading prompt file {prompt_path}: {e}")
+                    return None
 
-    logger.error(f"Prompt file not found for '{persona_name}' mode '{mode}'")
+    logger.error(f"Prompt file not found for '{persona_name}' mode '{mode}' (tried philosophy fallback)")
     return None
 
 
@@ -98,6 +112,7 @@ def load_llm_config_for_persona(
     prompt_overrides: Optional[Dict[str, str]] = None,
     max_tokens_override: Optional[int] = None,
     personality_notes: Optional[str] = None,
+    suppress_sentence_range: bool = False,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """
     Load LLM instance and effective prompt for a persona.
@@ -150,7 +165,7 @@ def load_llm_config_for_persona(
     if pcfg and pcfg.voice_profile:
         vp = pcfg.voice_profile
         directives = "\n\n--- VOICE DIRECTIVES ---\n"
-        if effective_max_tokens:
+        if effective_max_tokens and not suppress_sentence_range:
             sentence_range = _tokens_to_sentence_range(effective_max_tokens)
             directives += f"Respond in {sentence_range} sentences.\n"
         if vp.get("style_keywords"):

@@ -1,7 +1,7 @@
 # Filename: translator.py
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from core.config import load_llm_config_for_persona
 from core.registry import get_display_names
 from langchain_core.prompts import ChatPromptTemplate
@@ -57,6 +57,38 @@ def format_conversation_for_translation(messages: List[Dict[str, Any]]) -> str:
              transcript.append(f"{role}: {content}")
     
     return "\n\n".join(transcript)
+
+
+def translate_single_message(speaker: str, content: str) -> Optional[str]:
+    """Translate a single message to casual English using the translator chain.
+
+    Returns ``None`` on failure so the caller can keep the original text.
+    The speaker name is included in the formatted input so the translator
+    retains voice cues; the speaker prefix is stripped from the output.
+    """
+    if not content or not content.strip():
+        return None
+    chain = get_translator_chain()
+    if chain is None:
+        logger.error("Translator chain unavailable for single-message translation.")
+        return None
+
+    speaker_label = speaker.strip().upper()
+    conv_log = f"{speaker_label}: {content.strip()}"
+
+    try:
+        logger.info(f"Translating single message from {speaker_label} ({len(content)} chars).")
+        translated = chain.invoke({"conversation_log": conv_log}) or ""
+    except Exception as e:
+        logger.error(f"Single-message translation failed: {e}", exc_info=True)
+        return None
+
+    translated = translated.strip()
+    # Strip leading "SPEAKER:" prefix if the translator kept it.
+    prefix = f"{speaker_label}:"
+    if translated.upper().startswith(prefix):
+        translated = translated[len(prefix):].lstrip()
+    return translated or None
 
 
 def translate_conversation(messages: List[Dict[str, Any]]) -> str:

@@ -162,10 +162,63 @@ def _reset_conversation() -> None:
 # Conversation runners
 # ---------------------------------------------------------------------------
 
+def _run_story_turn(prompt: str) -> None:
+    """Single-speaker, single-turn STORY mode (Herodotus-only).
+
+    Bypasses the agentic graph — STORY mode is one prompt, one story, end.
+    """
+    from core.persona import create_chain
+    from core.utils import parse_direction_tag
+
+    starter = "Herodotus"
+    pid = "herodotus"
+    personality_notes = st.session_state.get("personality_notes_story", "")
+
+    try:
+        st.session_state.current_status = "Herodotus is choosing a story..."
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            gui.render_thinking_indicator("Herodotus is choosing a story..."),
+            unsafe_allow_html=True,
+        )
+
+        chain = create_chain(
+            pid, mode="story",
+            personality_notes=(personality_notes.strip() or None),
+        )
+        if chain is None:
+            raise RuntimeError("Failed to load Herodotus story chain.")
+
+        raw = chain.invoke({"input": prompt, "chat_history": []})
+        cleaned, _direction = parse_direction_tag(raw)
+
+        thinking_placeholder.empty()
+
+        story_msg: Dict[str, Any] = {"role": starter, "content": cleaned, "monologue": None}
+        st.session_state.messages.append(story_msg)
+        _write_log(story_msg)
+
+        st.session_state.current_status = "Story complete."
+        st.session_state.conversation_completed = True
+        _close_log()
+    except Exception as e:
+        logger.exception("Story mode error.")
+        st.error(f"Story mode error: {e}")
+        st.session_state.current_status = "Critical error in Story mode."
+        _close_log()
+    finally:
+        st.session_state.pop("current_run_mode", None)
+        st.rerun()
+
+
 def _run_initial_conversation(prompt: str) -> None:
     """Start a new agentic conversation from an initial user prompt."""
-    num_rounds = st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS)
     mode = st.session_state.get("current_run_mode", DEFAULT_CONVERSATION_MODE)
+    if mode == "Story":
+        _run_story_turn(prompt)
+        return
+
+    num_rounds = st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS)
     starter = st.session_state.get("philosopher_1", "Socrates")
     philosopher_2 = st.session_state.get("philosopher_2", "Confucius")
 
@@ -204,8 +257,6 @@ def _run_initial_conversation(prompt: str) -> None:
             _write_log(m)
 
         st.session_state.conversation_completed = success
-        if success:
-            _maybe_translate(mode)
         _close_log()
     except Exception as e:
         logger.exception("Conversation error.")
@@ -215,37 +266,6 @@ def _run_initial_conversation(prompt: str) -> None:
     finally:
         st.session_state.pop("current_run_mode", None)
         st.rerun()
-
-
-def _maybe_translate(mode: str) -> None:
-    """If translated output is selected, run the translator.
-
-    Stores the result in ``translated_messages`` so that the originals in
-    ``messages`` are never overwritten.  The display logic switches between
-    them based on the current output style selection.
-    """
-    if st.session_state.get("output_style") != "Translated Text":
-        return
-    try:
-        thinking_placeholder = st.empty()
-        thinking_placeholder.markdown(
-            gui.render_thinking_indicator("Translating conversation..."),
-            unsafe_allow_html=True,
-        )
-        original = st.session_state.messages[:]
-        translated = translate_conversation(original)
-        thinking_placeholder.empty()
-
-        st.session_state.translated_messages = [
-            {"role": "system", "content": f"### Translated Conversation\n\n---\n\n{translated}"}
-        ]
-        log = st.session_state.get("log_content")
-        if isinstance(log, list):
-            log.append("\n\n--- TRANSLATED CONVERSATION ---")
-            log.append(translated)
-    except Exception as e:
-        logger.error(f"Translation failed: {e}", exc_info=True)
-        st.error(f"Translation failed: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -265,8 +285,17 @@ except Exception as e:
     model_info = {}
     logger.exception("Model info load failed.")
 
-# Layout: Settings + action buttons
-col_settings, col_reset, col_download, col_logout = st.columns([3, 2, 2, 1.5])
+_conversation_completed = st.session_state.get("conversation_completed", False)
+
+# Layout: Settings + action buttons. "Translate All" only appears after a
+# conversation completes.
+if _conversation_completed:
+    col_settings, col_reset, col_translate_all, col_download, col_logout = st.columns(
+        [3, 2, 2, 2, 1.5]
+    )
+else:
+    col_settings, col_reset, col_download, col_logout = st.columns([3, 2, 2, 1.5])
+    col_translate_all = None
 
 with col_settings:
     gui.display_settings_popover(model_info)
@@ -276,9 +305,15 @@ with col_reset:
         _reset_conversation()
         st.rerun()
 
+if col_translate_all is not None:
+    with col_translate_all:
+        if st.button("Translate All", help="Rewrite every philosopher message in casual English."):
+            st.session_state["_translate_all_request"] = True
+            st.rerun()
+
 with col_download:
     if (
-        st.session_state.get("conversation_completed")
+        _conversation_completed
         and isinstance(st.session_state.get("log_content"), list)
         and st.session_state["log_content"]
     ):
@@ -295,13 +330,7 @@ with col_logout:
         auth.logout()
         st.rerun()
 
-# Conversation display — show translated version when available and selected
 _display_messages = st.session_state.messages
-if (
-    st.session_state.get("output_style") == "Translated Text"
-    and st.session_state.get("translated_messages")
-):
-    _display_messages = st.session_state.translated_messages
 
 # ---------------------------------------------------------------------------
 # Handle editor rewrite requests
@@ -366,16 +395,65 @@ if _editor_req and st.session_state.get("conversation_completed"):
 
     # Re-derive display messages after edit
     _display_messages = st.session_state.messages
-    if (
-        st.session_state.get("output_style") == "Translated Text"
-        and st.session_state.get("translated_messages")
-    ):
-        _display_messages = st.session_state.translated_messages
 
-_is_translated = (
-    st.session_state.get("output_style") == "Translated Text"
-    and st.session_state.get("translated_messages") is not None
-)
+
+# ---------------------------------------------------------------------------
+# Per-message translate toggle — rewrite a single message in casual English.
+# ---------------------------------------------------------------------------
+def _apply_translate_toggle(msg: Dict[str, Any]) -> None:
+    """Flip a message between its original content and its casual translation.
+
+    Caches the translation in ``_translated_content`` so the second click is
+    instant. ``_pre_translate_content`` remembers the text we swapped out.
+    """
+    from translator import translate_single_message
+
+    if msg.get("_is_translated"):
+        pre = msg.get("_pre_translate_content")
+        if pre is not None:
+            msg["content"] = pre
+        msg["_is_translated"] = False
+        return
+
+    if "_translated_content" not in msg:
+        speaker = msg.get("role", "speaker")
+        msg["_pre_translate_content"] = msg["content"]
+        with st.spinner(f"Translating {speaker} to casual English..."):
+            translated = translate_single_message(speaker, msg["_pre_translate_content"])
+        if not translated:
+            st.warning(f"Translation failed for {speaker}.")
+            return
+        msg["_translated_content"] = translated
+    else:
+        msg.setdefault("_pre_translate_content", msg["content"])
+
+    msg["content"] = msg["_translated_content"]
+    msg["_is_translated"] = True
+
+
+_translate_req = st.session_state.pop("_translate_request", None)
+if _translate_req and st.session_state.get("conversation_completed"):
+    _idx = _translate_req.get("index")
+    messages = st.session_state.messages
+    if _idx is not None and 0 <= _idx < len(messages):
+        _msg = messages[_idx]
+        if _msg.get("role", "").lower() not in ("user", "system"):
+            _apply_translate_toggle(_msg)
+            st.session_state["_scroll_to_msg"] = _idx
+    _display_messages = st.session_state.messages
+
+
+if st.session_state.pop("_translate_all_request", False) and st.session_state.get("conversation_completed"):
+    messages = st.session_state.messages
+    with st.spinner("Translating all philosopher messages to casual English..."):
+        for _msg in messages:
+            if _msg.get("role", "").lower() in ("user", "system"):
+                continue
+            if _msg.get("_is_translated"):
+                continue  # already translated
+            _apply_translate_toggle(_msg)
+    _display_messages = st.session_state.messages
+
 
 gui.display_conversation(
     messages=_display_messages,
@@ -384,7 +462,6 @@ gui.display_conversation(
     next_speaker_for_guidance="",
     num_rounds=st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS),
     mode=st.session_state.get("conversation_mode", DEFAULT_CONVERSATION_MODE),
-    is_translated_view=_is_translated,
 )
 
 # Internal monologue expander
@@ -414,8 +491,8 @@ if prompt:
     logger.info(f"New prompt: '{prompt[:50]}...'")
     _reset_conversation()
 
-    num_rounds = st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS)
     mode = st.session_state.get("conversation_mode", DEFAULT_CONVERSATION_MODE)
+    num_rounds = 1 if mode == "Story" else st.session_state.get("num_rounds", DEFAULT_NUM_ROUNDS)
 
     _init_log(num_rounds)
 

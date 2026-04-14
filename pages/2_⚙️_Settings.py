@@ -72,7 +72,7 @@ st.markdown(
 # Constants
 # ---------------------------------------------------------------------------
 PERSONAS = get_display_names() + ["Moderator"]
-MODES = ["Philosophy", "Bio"]
+MODES = ["Philosophy", "Story"]
 FALLBACK_TEXT = "Default prompt file not found."
 
 # ---------------------------------------------------------------------------

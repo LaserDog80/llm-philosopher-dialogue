@@ -61,7 +61,7 @@ gui.inject_chat_css()
 # Constants
 # ---------------------------------------------------------------------------
 PERSONAS = get_display_names() + ["Moderator"]
-MODES = ["Philosophy", "Bio"]
+MODES = ["Philosophy", "Story"]
 
 # ---------------------------------------------------------------------------
 # Header

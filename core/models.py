@@ -7,7 +7,8 @@ from enum import Enum
 
 class ConversationMode(str, Enum):
     PHILOSOPHY = "Philosophy"
-    BIO = "Bio"
+    BIO = "Bio"  # Deprecated — retained for back-compat with older saved state. UI no longer surfaces Bio.
+    STORY = "Story"
 
 
 class ModeratorControl(str, Enum):
