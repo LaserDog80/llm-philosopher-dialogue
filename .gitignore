@@ -25,4 +25,7 @@ dist/
 .vscode/
 .idea/
 .DS_Store
-Thumbs.dbtests/test_logs/
+Thumbs.db
+
+# Test artifacts
+tests/test_logs/
