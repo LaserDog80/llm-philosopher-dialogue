@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(streamlit run:*)",
+      "Bash(open:*)",
+      "Bash(/Library/Frameworks/Python.framework/Versions/3.14/bin/python3:*)",
+      "Bash(cd \"/Users/colinbyrne/Documents/WORKSPACE/Coding Projects/Applications/llm-philosopher-dialogue\" && ls prompts/aristotle_philosophy.txt prompts/nietzsche_bio.txt prompts/herodotus_philosophy.txt prompts/simaqian_bio.txt && wc -c prompts/aristotle_*.txt prompts/nietzsche_*.txt prompts/herodotus_*.txt prompts/simaqian_*.txt)",
+      "Bash(pkill -f \"streamlit run app.py\")"
+    ]
+  }
+}

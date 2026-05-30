@@ -1,0 +1,15 @@
+{
+  "name": "llm-philosopher-dialogue",
+  "detected_type": "streamlit",
+  "auto_generated": true,
+  "ports": [
+    8501
+  ],
+  "steps": [
+    {
+      "run": "streamlit run app.py",
+      "background": true,
+      "wait": 2
+    }
+  ]
+}
